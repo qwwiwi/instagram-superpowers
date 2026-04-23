@@ -1,0 +1,35 @@
+# Secrets (never commit!)
+*.key
+*.pem
+*.env
+secrets/
+.secrets/
+api-key
+api-key.txt
+cookies.json
+accounts.json
+watchlist.json
+totp_secret
+2fa_secret
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Logs / temp
+*.log
+/tmp/
+*.bak
+*.backup.*
