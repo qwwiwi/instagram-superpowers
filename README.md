@@ -25,9 +25,9 @@
 
 | Сервис      | Для чего                          | Цена                                        | Как подключить |
 |-------------|-----------------------------------|---------------------------------------------|----------------|
-| HikerAPI    | Данные Instagram (профили, рилсы) | ~$2–5/мес при умеренном объёме             | [hikerapi.com](https://hikerapi.com) — регистрация, получение access key |
+| HikerAPI    | Данные Instagram (профили, рилсы) | ~$2–5/мес при умеренном объёме             | [hikerapi.com](https://hikerapi.com/p/ilnnzsu0) — регистрация, получение access key |
 | Cobalt      | Скачивание рилсов/постов          | Бесплатно: self-host свой инстанс          | [github.com/imputnet/cobalt](https://github.com/imputnet/cobalt) — поднимите на своём сервере |
-| ChatPlace   | Instagram DM + AI-агент           | AI Pack — ~$50/мес                         | [chatplace.com](https://chatplace.com) — регистрация, подключение MCP |
+| ChatPlace   | Instagram DM + AI-агент           | AI Pack — ~$50/мес                         | [chatplace.io](https://chatplace.io/?r=019d12f0-45f9-713a-87c0-e6ad9d10ebad) — регистрация, подключение MCP |
 
 **Обязательно:**
 - HikerAPI — только для `instagram-hikerapi`
