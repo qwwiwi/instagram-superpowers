@@ -13,7 +13,7 @@
 - Хуки, транскрипты с таймкодами, раскадровка рилса, сравнение 2–5 рилсов
 - Поиск того, что вирусится в нише и по хэштегам
 - Скачивание рилсов, постов и сторис файлом
-- Работает через **[Loore AI](https://loore.ai)** – источник данных Instagram для AI-агентов (MCP и REST по одному ключу)
+- Работает через **[Loore AI](https://loore.ai)** – источник данных Instagram для AI-агентов: REST API, CLI и MCP по одному ключу. Документация: [docs.loore.ai](https://docs.loore.ai)
 
 ### 2. `chatplace-marketing-sales/` – автоворонка и продажник
 - Кодовые слова в Instagram (Daши DM + публичный ответ под комментом в одном проходе)
@@ -27,8 +27,8 @@
 
 | Сервис      | Для чего                          | Цена                                        | Как подключить |
 |-------------|-----------------------------------|---------------------------------------------|----------------|
-| Loore AI    | Данные Instagram: профили, рилсы, транскрипты, конкуренты, скачивание | Тарифы в кредитах | [loore.ai](https://loore.ai) – регистрация, ключ в кабинете: Настройки → API и MCP |
-| ChatPlace   | Instagram DM + AI-агент           | AI Pack — ~$50/мес                         | [chatplace.io](https://chatplace.io/?r=019d12f0-45f9-713a-87c0-e6ad9d10ebad) — регистрация, подключение MCP |
+| Loore AI    | Данные Instagram: профили, рилсы, транскрипты, конкуренты, скачивание | Тарифы в кредитах | [loore.ai](https://loore.ai) – регистрация, ключ в кабинете: Настройки → API и MCP. Документация: [docs.loore.ai](https://docs.loore.ai) |
+| ChatPlace   | Instagram DM + AI-агент           | $20/мес                                     | [chatplace.io](https://chatplace.io/?r=019d12f0-45f9-713a-87c0-e6ad9d10ebad) — регистрация, подключение MCP |
 
 **Обязательно:**
 - Loore AI – только для `instagram-loore`
@@ -68,7 +68,7 @@ cp -r instagram-superpowers/chatplace-marketing-sales ~/.claude/skills/
    ```
    Проверка – `codex mcp list`.
 
-   Другие клиенты (Cursor, Claude Desktop, OpenClaw, Hermes) – на [loore.ai](https://loore.ai).
+   Другие клиенты (Cursor, Claude Desktop, OpenClaw, Hermes) – в [документации Loore](https://docs.loore.ai).
 4. Без MCP скилл работает через REST: `instagram-loore/scripts/loore.sh` берёт ключ из `LOORE_API_KEY`.
 
 Подробно – `instagram-loore/references/connect.md`.
