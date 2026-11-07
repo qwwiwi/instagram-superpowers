@@ -13,7 +13,7 @@
 - Хуки, транскрипты с таймкодами, раскадровка рилса, сравнение 2–5 рилсов
 - Поиск того, что вирусится в нише и по хэштегам
 - Скачивание рилсов, постов и сторис файлом
-- Работает через **[Loore AI](https://docs.loore.ai)** – источник данных Instagram для AI-агентов (MCP и REST по одному ключу)
+- Работает через **[Loore AI](https://loore.ai)** – источник данных Instagram для AI-агентов (MCP и REST по одному ключу)
 
 ### 2. `chatplace-marketing-sales/` – автоворонка и продажник
 - Кодовые слова в Instagram (Daши DM + публичный ответ под комментом в одном проходе)
@@ -27,7 +27,7 @@
 
 | Сервис      | Для чего                          | Цена                                        | Как подключить |
 |-------------|-----------------------------------|---------------------------------------------|----------------|
-| Loore AI    | Данные Instagram: профили, рилсы, транскрипты, конкуренты, скачивание | Тарифы в кредитах – на [loore.ai](https://loore.ai) | [loore.ai/register](https://loore.ai/register) – регистрация, ключ в кабинете: Настройки → API и MCP. Документация: [docs.loore.ai](https://docs.loore.ai) |
+| Loore AI    | Данные Instagram: профили, рилсы, транскрипты, конкуренты, скачивание | Тарифы в кредитах | [loore.ai](https://loore.ai) – регистрация, ключ в кабинете: Настройки → API и MCP |
 | ChatPlace   | Instagram DM + AI-агент           | AI Pack — ~$50/мес                         | [chatplace.io](https://chatplace.io/?r=019d12f0-45f9-713a-87c0-e6ad9d10ebad) — регистрация, подключение MCP |
 
 **Обязательно:**
@@ -48,7 +48,7 @@ cp -r instagram-superpowers/chatplace-marketing-sales ~/.claude/skills/
 
 ## Подключение Loore
 
-1. Зарегистрируйтесь на [loore.ai](https://loore.ai/register) и создайте ключ в кабинете [app.loore.ai](https://app.loore.ai): **Настройки → API и MCP**. Ключ показывается один раз – сохраните его сразу.
+1. Зарегистрируйтесь на [loore.ai](https://loore.ai) и создайте ключ в кабинете: **Настройки → API и MCP**. Ключ показывается один раз – сохраните его сразу.
 2. Положите ключ в переменную окружения (не в команды и не в репо):
    ```bash
    export LOORE_API_KEY='<ВАШ_КЛЮЧ>'
@@ -68,7 +68,7 @@ cp -r instagram-superpowers/chatplace-marketing-sales ~/.claude/skills/
    ```
    Проверка – `codex mcp list`.
 
-   Другие клиенты (Cursor, Claude Desktop, OpenClaw, Hermes) – в [документации Loore](https://docs.loore.ai/clients/overview).
+   Другие клиенты (Cursor, Claude Desktop, OpenClaw, Hermes) – на [loore.ai](https://loore.ai).
 4. Без MCP скилл работает через REST: `instagram-loore/scripts/loore.sh` берёт ключ из `LOORE_API_KEY`.
 
 Подробно – `instagram-loore/references/connect.md`.
