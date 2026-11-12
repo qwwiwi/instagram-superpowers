@@ -34,15 +34,40 @@ description: "Создание новых элементов воронки в C
 
 ---
 
+## Гоча: Template против QuickAnswer
+
+Кнопка выглядит одинаково, но работает по-разному – от типа формы блока-сообщения.
+
+| Тип формы | Как рисуется кнопка | Что по тапу |
+|---|---|---|
+| `Template` | внутри пузыря сообщения, во всю ширину | ссылка открывается, переход работает |
+| `QuickAnswer` | сбоку, серой пилюлей-чипом | боту уходит текст кнопки, наружу **ничего не открывается** |
+
+- **QuickAnswer не используем.** В каждом `automations_messages_create` всегда передавайте `formType: "template"`:
+
+  ```json
+  {"stepId": "<STEP_ID>", "actionType": "message", "formType": "template", "text": "<ТЕКСТ>"}
+  ```
+
+- **Тип нельзя изменить после создания:** `automations_messages_set_form_type` отвечает `You can not change type`. Чинится только пересборкой: новый блок с `formType: "template"`, перевесить кнопки, переподключить входящие связи, старый удалить.
+- **Кнопку нельзя вешать на action-блок** (`actionType: 3`). API примет, `automations_get_detail` покажет, а человек не увидит ничего: у служебных блоков нет пузыря.
+- **Воронку с кнопками начинайте с `automations_quick_setup`** (`templateType: "base"`). `automations_create` заводит первый блок в типе `QuickAnswer`, а удалить первый блок API не даёт, так что исправить это нельзя. Quick_setup создаёт первое и второе сообщения сразу в `Template`; ветки достраивайте вручную, передавая `formType: "template"`.
+- **После quick_setup снимите `<p>`-обёртки с текстов** сообщений (`<p>…</p>` вокруг `text`): оставьте чистый текст.
+
+Дальнейшая сборка воронки – [references/funnel-flow.md](references/funnel-flow.md).
+
+---
+
 ## Connection
 
 - **MCP endpoint:** `https://mcp.chatplace.io/mcp`
-- **Auth:** `Authorization: Bearer $CHATPLACE_API_KEY` (НЕ x-api-key — Cloudflare 403)
-- **Key path:** `~/.secrets/chatplace/env`
-- **Bot (@your_instagram Instagram):** `YOUR_BOT_ID`
+- **Auth:** `Authorization: Bearer $CHATPLACE_API_KEY` (НЕ `x-api-key` – Cloudflare 403)
+- **Клиент – только `curl`.** Запросы из Python `urllib` получают от Cloudflare 403, даже с верным ключом.
+- **Файл ключей:** `~/.secrets/chatplace/env` (`CHATPLACE_API_KEY`, `CHATPLACE_BOT_ID`)
+- **Bot id** берите из ответа `bots_list` (или из `CHATPLACE_BOT_ID`), в скилл и в скрипты его не вписывайте.
 
 ```bash
-source ~/.secrets/chatplace/env
+source ~/.secrets/chatplace/env   # $CHATPLACE_API_KEY, $CHATPLACE_BOT_ID
 ```
 
 ---
@@ -116,7 +141,9 @@ source ~/.secrets/chatplace/env
 |---------|---------|---------|
 | `AI assistant not exists` | Не создан в UI | Владелец → UI → Создать |
 | `You have no active ChatPlace AI package` | Нет AI Pack | Владелец → Connect AI tools → оплата |
-| Cloudflare 403 HTML | Неверный auth | Только `Authorization: Bearer` |
+| Cloudflare 403 HTML | Неверный заголовок или не `curl` | Только `Authorization: Bearer`, запросы только через `curl` (не `urllib`) |
+| Кнопка есть, но ссылка не открывается | Блок создан как `QuickAnswer` | Пересобрать блок с `formType: "template"` (см. гочу выше) |
+| Кнопка есть в `get_detail`, но человек её не видит | Кнопка на action-блоке | Перенести на блок `actionType: "message"` |
 | Агент не ловит опечатки «Cloude/Клоде» | equals case-sensitive | Варианты в KB как вопросы ИЛИ Message Recognition (UI) |
 | Под комментом тишина | Нет comment auto-reply rule | `comments_create` |
 | Whisper misspelling of name | Upload without proofreading | Grep for name variants → replace with canonical |
