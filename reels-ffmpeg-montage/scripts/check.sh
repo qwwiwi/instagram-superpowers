@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Local checks of the skill: syntax of every script and the offline test suite.
 # Usage: reels-ffmpeg-montage/scripts/check.sh      (PYTHON=python3.12 ... to pick an interpreter)
+# Needs Python with pytest; ffmpeg is optional (the tests that run it are skipped without it), so is Pillow.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,6 +35,12 @@ if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; 
   echo "check.sh: ffmpeg/ffprobe not found, the end-to-end tests will be skipped" >&2
 fi
 
-echo "check.sh: tests"
+if "$py" -c "import PIL" >/dev/null 2>&1; then
+  echo "check.sh: Pillow found, the png captions tests will run"
+else
+  echo "check.sh: Pillow not installed, the png captions tests that draw pictures will be skipped (python3 -m pip install pillow)" >&2
+fi
+
+echo "check.sh: tests (offline: no network, no Groq key, no libass needed)"
 "$py" -m pytest -q -rs -p no:cacheprovider "$skill/tests"
 echo "check.sh: OK"
