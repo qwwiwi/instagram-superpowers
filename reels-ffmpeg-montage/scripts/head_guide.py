@@ -4,12 +4,14 @@
 Usage:
     head_guide.py reel-cut.mp4 --time 2.0 [--time 9.5] [--out head-guide]
     head_guide.py --top 610 --eyes 830 --chin 1010          # numbers only, no video needed
+    head_guide.py --top 625 --chin 1560 --y0 880            # check a crop: exit 1 when it cuts the head
 
 The frame is drawn at full size (1080 x 1920) with a thin line every 20 px, a thicker labelled line
 every 100 px and the zone lines of the regulation (y 115, 960, 1520). Read on it the top of the
 hair, the eye line and the chin, then pass them as ``--top``, ``--eyes``, ``--chin``: the script
 prints the split offset ``y0`` (rule 1.3 of ``montage-reglament.md``) with where the head lands in
-the split, and where the caption of a full-screen speaker shot goes (rule 7.5).
+the split, and where the caption of a full-screen speaker shot goes (rule 7.5). The whole head stays
+in the window: a close-up is scaled down, never cut; a crop that cuts the head is a FAIL (exit 1).
 
 Labels: Pillow when it is installed, otherwise ffmpeg ``drawtext`` when the build has it, otherwise
 lines only (the printed legend says which line is which).
@@ -39,10 +41,13 @@ HAIR_GAP_TIGHT = 20
 CHIN_TARGET = 1480
 CHIN_LIMIT = 1520
 CHIN_HARD = 1600
-# Close-up (rule 1.3, step 5): the head is too tall for the half even with the tight gap. The seam then
-# cuts the hair, the chin goes to y 1580 and the eyes must stay at y >= 1100 (brows and forehead in).
-CHIN_CLOSE = 1580
-EYES_MIN = 1100
+# The whole head stays inside the speaker window (rule 1.3): hair top at least 20 px under the seam,
+# chin at least 40 px above the bottom of the frame. A close-up that does not fit at full size is scaled
+# down (not cut) to at most MIN_SCALE; the side gaps are filled with a blurred copy of the same frame.
+HEAD_MARGIN_TOP = 20
+HEAD_MARGIN_BOTTOM = 40
+WINDOW_BOTTOM = FRAME_H
+MIN_SCALE = 0.85
 # Speaker captions (rule 7.5).
 CHEST_TOP = 1180
 CHEST_BOTTOM = 1352
@@ -55,7 +60,10 @@ TOP_SAFE = 115
 
 @dataclass
 class SplitFit:
-    """Where the head lands in the speaker half of a split."""
+    """Where the head lands in the speaker half of a split.
+
+    ``y0`` is a row of the source after scaling by ``scale`` (1.0 = the source at width 1080).
+    """
 
     y0: int
     top: int
@@ -63,6 +71,7 @@ class SplitFit:
     eyes: int | None
     verdict: str
     notes: list[str]
+    scale: float = 1.0
 
 
 @dataclass
@@ -82,8 +91,48 @@ def guide_rows(step: int = 20, major: int = 100, height: int = FRAME_H) -> list[
     return [(y, y % major == 0) for y in range(step, height, step)]
 
 
+def crop_fit(top: int, chin: int, y0: int, scale: float = 1.0, eyes: int | None = None) -> SplitFit:
+    """Where the head of the source lands for a given split crop, and whether the crop cuts it.
+
+    Args:
+        top: Top of the hair in the source at width 1080, px (the highest of all head marks).
+        chin: Chin, px (the lowest of all head marks: tilts and an open mouth included).
+        y0: First source row (after scaling) shown at the seam y 960.
+        scale: Scale of the speaker in the window, ``MIN_SCALE``-1.0.
+        eyes: Eye line, px (optional).
+
+    Returns:
+        Landing rows and the verdict: ``fail`` when the hair top is less than ``HEAD_MARGIN_TOP`` under the
+        seam or the chin less than ``HEAD_MARGIN_BOTTOM`` above the bottom (the window cuts the head),
+        ``warn`` for a chin under y 1600 or eyes outside 1100-1400, else ``ok``.
+    """
+    land_top = round(top * scale) - y0 + SEAM
+    land_chin = round(chin * scale) - y0 + SEAM
+    land_eyes = round(eyes * scale) - y0 + SEAM if eyes is not None else None
+    notes: list[str] = []
+    verdict = "ok"
+    if land_top < SEAM + HEAD_MARGIN_TOP:
+        verdict = "fail"
+        notes.append(f"FAIL: hair top at y {land_top}, the window cuts the head (need y >= {SEAM + HEAD_MARGIN_TOP})")
+    if land_chin > WINDOW_BOTTOM - HEAD_MARGIN_BOTTOM:
+        verdict = "fail"
+        notes.append(f"FAIL: chin at y {land_chin}, the window cuts the head (need y <= {WINDOW_BOTTOM - HEAD_MARGIN_BOTTOM})")
+    if verdict != "fail":
+        if land_chin > CHIN_HARD:
+            verdict = "warn"
+            notes.append(f"chin at y {land_chin} > {CHIN_HARD}: the head is whole, but the take is close; "
+                         "tell the student to sit further from the camera")
+        elif land_chin > CHIN_LIMIT:
+            verdict = "warn"
+            notes.append(f"chin at y {land_chin} > {CHIN_LIMIT}: allowed, tell the student to sit further from the camera")
+        if land_eyes is not None and not 1100 <= land_eyes <= 1400:
+            verdict = "warn"
+            notes.append(f"eyes at y {land_eyes}, outside 1100-1400")
+    return SplitFit(y0, land_top, land_chin, land_eyes, verdict, notes, scale)
+
+
 def split_offset(top: int, chin: int, eyes: int | None = None, src_height: int = FRAME_H) -> SplitFit:
-    """Split offset ``y0`` by rule 1.3 and where the head lands.
+    """Split offset ``y0`` (and scale) by rule 1.3 and where the head lands.
 
     Args:
         top: Top of the hair in the full frame (1080 x 1920), px.
@@ -92,44 +141,35 @@ def split_offset(top: int, chin: int, eyes: int | None = None, src_height: int =
         src_height: Height of the full frame.
 
     Returns:
-        The offset and the landing rows with a verdict: ok, warn (close-up) or fail.
+        The offset, the scale and the landing rows with a verdict: ok, warn (close-up) or fail (the head
+        does not fit the window even at ``MIN_SCALE``).
     """
     if not 0 <= top < chin <= src_height:
         raise MontageError(f"need 0 <= top < chin <= {src_height}, got top={top} chin={chin}")
     y0 = top - HAIR_GAP
     if chin - y0 + SEAM > CHIN_TARGET:
         y0 = top - HAIR_GAP_TIGHT
-    close_up = chin - y0 + SEAM > CHIN_HARD
-    if close_up:
-        y0 = chin - (CHIN_CLOSE - SEAM)
-    y0 = min(max(y0, 0), src_height - SEAM)
-    land_top, land_chin = top - y0 + SEAM, chin - y0 + SEAM
-    land_eyes = eyes - y0 + SEAM if eyes is not None else None
-    notes: list[str] = []
-    verdict = "ok"
-    if close_up and land_chin <= CHIN_HARD:
-        if land_eyes is None:
-            return SplitFit(y0, land_top, land_chin, None, "fail",
-                            ["close-up: the seam cuts the hair; pass --eyes to check that the eyes land at y >= 1100"])
-        if land_eyes < EYES_MIN:
-            return SplitFit(y0, land_top, land_chin, land_eyes, "fail",
-                            [f"close-up: eyes at y {land_eyes} < {EYES_MIN}, the face does not fit the half: re-shoot further away"])
-        notes.append(f"close-up: the seam cuts the hair (top at y {land_top}), chin at y {land_chin}, eyes at y {land_eyes}; "
-                     "allowed, tell the student to sit further from the camera")
-        return SplitFit(y0, land_top, land_chin, land_eyes, "warn", notes)
-    if land_chin > CHIN_HARD:
-        verdict = "fail"
-        notes.append(f"chin at y {land_chin} > {CHIN_HARD}: the take is too close, the face does not fit the half")
-    elif land_chin > CHIN_LIMIT:
-        verdict = "warn"
-        notes.append(f"chin at y {land_chin} > {CHIN_LIMIT}: allowed, tell the student to sit further from the camera")
-    if not 975 <= land_top <= 1060:
-        verdict = "fail" if verdict == "fail" else "warn"
-        notes.append(f"hair top at y {land_top}, outside 975-1060 (offset clamped to the frame)")
-    if land_eyes is not None and not 1100 <= land_eyes <= 1400:
-        verdict = "fail" if verdict == "fail" else "warn"
-        notes.append(f"eyes at y {land_eyes}, outside 1100-1400")
-    return SplitFit(y0, land_top, land_chin, land_eyes, verdict, notes)
+    scale = 1.0
+    if chin - y0 + SEAM > CHIN_HARD:
+        # Close-up: the hair goes right under the seam and, if the chin still leaves the window, the speaker is
+        # scaled down. The head is never cut.
+        room = WINDOW_BOTTOM - HEAD_MARGIN_BOTTOM - SEAM - HEAD_MARGIN_TOP
+        if chin - top > room:
+            scale = max(MIN_SCALE, math.floor(room / (chin - top) * 1000) / 1000)
+        y0 = round(top * scale) - HEAD_MARGIN_TOP
+    y0 = min(max(y0, 0), round(src_height * scale) - SEAM)
+    fit = crop_fit(top, chin, y0, scale, eyes)
+    if scale < 1.0 and fit.verdict != "fail":
+        fit.notes.insert(0, f"close-up: speaker scaled to {scale:g} (width {round(FRAME_W * scale)} px, centred; "
+                            "fill the side gaps with a blurred copy of the same frame)")
+    if fit.verdict == "fail" and chin - top > room_for_head():
+        fit.notes.append(f"the head is {chin - top} px tall: it does not fit the window even at scale {MIN_SCALE:g}; re-shoot further away")
+    return fit
+
+
+def room_for_head() -> float:
+    """Tallest head (hair to chin, source px) that fits the speaker window at ``MIN_SCALE``."""
+    return (WINDOW_BOTTOM - HEAD_MARGIN_BOTTOM - SEAM - HEAD_MARGIN_TOP) / MIN_SCALE
 
 
 def speaker_caption(top: int, chin: int) -> CaptionSlot:
@@ -212,16 +252,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top", type=int, help="top of the hair, px, read on the guide frame")
     parser.add_argument("--eyes", type=int, help="eye line, px")
     parser.add_argument("--chin", type=int, help="chin, px")
+    parser.add_argument("--y0", type=int, help="check THIS split crop (source row at the seam) instead of computing one; exit 1 when it cuts the head")
+    parser.add_argument("--scale", type=float, default=1.0, help=f"speaker scale of the crop checked with --y0 ({MIN_SCALE:g}-1.0, default 1.0)")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
 
-def report_numbers(top: int, chin: int, eyes: int | None) -> None:
-    """Print the split offset and the speaker caption slot."""
-    fit = split_offset(top, chin, eyes)
+def report_numbers(top: int, chin: int, eyes: int | None, y0: int | None = None, scale: float = 1.0) -> bool:
+    """Print the split offset (or the check of a given crop) and the speaker caption slot.
+
+    Returns:
+        False when the crop cuts the head (verdict fail).
+    """
+    fit = split_offset(top, chin, eyes) if y0 is None else crop_fit(top, chin, y0, scale, eyes)
     eyes_text = f", eyes y {fit.eyes}" if fit.eyes is not None else ""
-    print(f"split: y0 = {fit.y0} (source rows {fit.y0}-{fit.y0 + SEAM} go to y 960-1920); "
-          f"hair top y {fit.top}{eyes_text}, chin y {fit.chin} -> {fit.verdict}")
+    scale_text = f", speaker scale {fit.scale:g}" if fit.scale != 1.0 else ""
+    print(f"split: y0 = {fit.y0}{scale_text} (source rows {fit.y0}-{fit.y0 + SEAM} go to y 960-1920); "
+          f"hair top y {fit.top}{eyes_text}, chin y {fit.chin} -> {fit.verdict.upper()}")
     for note in fit.notes:
         print(f"  - {note}")
     slot = speaker_caption(top, chin)
@@ -230,6 +277,7 @@ def report_numbers(top: int, chin: int, eyes: int | None) -> None:
               "shorten this speaker shot or move the cut (rule 7.5)")
     else:
         print(f"speaker shot: caption mode {slot.mode}, block y {slot.box_top}-{slot.box_bottom}, up to {slot.lines} line(s)")
+    return fit.verdict != "fail"
 
 
 def check_times_inside(video: Path, times: list[float]) -> None:
@@ -290,7 +338,12 @@ def run(args: argparse.Namespace) -> int:
             print(f"{t:.2f} s -> {out}")
         print(legend(args.step, method != "none"))
     if args.top is not None:
-        report_numbers(args.top, args.chin, args.eyes)
+        if not MIN_SCALE <= args.scale <= 1.0:
+            raise MontageError(f"--scale must be between {MIN_SCALE:g} and 1.0, got {args.scale:g}")
+        if not report_numbers(args.top, args.chin, args.eyes, args.y0, args.scale):
+            return 1
+    elif args.y0 is not None:
+        raise MontageError("--y0 checks a crop against the head marks: pass --top and --chin too")
     return 0
 
 

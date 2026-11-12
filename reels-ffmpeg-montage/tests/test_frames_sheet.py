@@ -223,22 +223,35 @@ def test_split_offset_puts_the_hair_60_px_under_the_seam() -> None:
     assert (fit.y0, fit.top, fit.chin, fit.eyes, fit.verdict) == (550, 1020, 1420, 1240, "ok")
 
 
-def test_split_offset_tightens_for_a_long_face_and_warns_for_a_close_up() -> None:
+def test_split_offset_tightens_for_a_long_face_and_keeps_a_close_up_whole() -> None:
     fit = head_guide.split_offset(top=500, chin=990)  # 490 px face: 60 px gap would put the chin at 1510
     assert fit.y0 == 480 and fit.top == 980 and fit.chin == 1470 and fit.verdict == "ok"
     close = head_guide.split_offset(top=500, chin=1080)
     assert close.chin == 1560 and close.verdict == "warn"
-    too_close = head_guide.split_offset(top=400, chin=1300)
-    assert too_close.verdict == "fail"  # close-up without --eyes cannot be checked
+    # 900 px head: the hair goes right under the seam, the chin stays 40 px above the bottom.
+    big = head_guide.split_offset(top=400, chin=1300)
+    assert (big.top, big.chin, big.scale, big.verdict) == (980, 1880, 1.0, "warn")
 
 
-def test_close_up_cuts_the_hair_and_keeps_the_eyes_and_chin_in_the_half() -> None:
-    # A real close-up: 870 px from the hair to the chin. The tight gap would put the chin at y 1820.
-    fit = head_guide.split_offset(top=630, chin=1500, eyes=1065)
-    assert (fit.y0, fit.chin, fit.eyes, fit.verdict) == (880, 1580, 1145, "warn")
-    assert fit.top < 960 and "close-up" in fit.notes[0]
-    # Eyes too high for the half even with the chin at 1580: re-shoot.
-    assert head_guide.split_offset(top=400, chin=1300, eyes=760).verdict == "fail"
+def test_close_up_is_scaled_down_never_cut() -> None:
+    # A real close-up: 935 px from the hair to the chin (a tilt included). Before, the seam cut the hair.
+    fit = head_guide.split_offset(top=625, chin=1560, eyes=1065)
+    assert fit.scale < 1.0 and fit.verdict == "warn"
+    assert fit.top >= 960 + head_guide.HEAD_MARGIN_TOP and fit.chin <= 1920 - head_guide.HEAD_MARGIN_BOTTOM
+    assert "close-up" in fit.notes[0]
+    # Too big even at the smallest scale: a fail with the reason.
+    huge = head_guide.split_offset(top=200, chin=1400)
+    assert huge.verdict == "fail" and "re-shoot" in huge.notes[-1]
+
+
+def test_a_crop_that_cuts_the_head_is_a_fail(capsys: pytest.CaptureFixture[str]) -> None:
+    # The crop of the old close-up branch: y0 880 puts the hair top above the seam.
+    cut = head_guide.crop_fit(top=625, chin=1560, y0=880)
+    assert cut.verdict == "fail" and cut.top < 960 and "cuts the head" in cut.notes[0]
+    assert head_guide.crop_fit(top=625, chin=1560, y0=574, scale=0.95).verdict != "fail"
+    assert head_guide.main(["--top", "625", "--chin", "1560", "--y0", "880"]) == 1
+    assert "FAIL" in capsys.readouterr().out
+    assert head_guide.main(["--top", "610", "--chin", "1010"]) == 0
 
 
 def test_split_offset_is_clamped_to_the_frame() -> None:
