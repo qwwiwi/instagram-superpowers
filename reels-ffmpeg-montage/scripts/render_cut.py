@@ -33,6 +33,7 @@ from common import (
     OUT_WIDTH,
     MapSegment,
     MontageError,
+    Word,
     WordsFile,
     build_map,
     load_words,
@@ -44,6 +45,7 @@ from common import (
     sanitize_words,
     save_words,
     setup_logging,
+    speech_lost,
     write_json,
 )
 
@@ -87,6 +89,23 @@ def load_plan(path: Path, source_duration: float) -> tuple[list[tuple[float, flo
     if not keep:
         raise MontageError("The plan keeps nothing")
     return keep, speed
+
+
+def snapping_damage(words: list[Word], plan_keep: list[tuple[float, float]],
+                    snapped: list[tuple[float, float]]) -> list[tuple[Word, float]]:
+    """Words that lose speech because of the snapping to the frame grid, not because the plan cut them.
+
+    Args:
+        words: Clean words with source times.
+        plan_keep: Kept pieces as planned.
+        snapped: The same pieces after :func:`common.quantize_keep`.
+
+    Returns:
+        ``(word, extra seconds lost)``; empty when snapping is harmless.
+    """
+    planned = {id(w): sec for w, sec in speech_lost(words, plan_keep, 0.0)}
+    return [(w, sec - planned.get(id(w), 0.0)) for w, sec in speech_lost(words, snapped, 0.0)
+            if sec - planned.get(id(w), 0.0) > 0.002]
 
 
 def _t(value: float) -> str:
@@ -267,16 +286,21 @@ def run(args: argparse.Namespace) -> int:
         LOG.warning("The source is %dx%d, not vertical 9:16. It is fitted with black bars; shoot vertically for a full-frame reel.",
                     info.width, info.height)
     keep, speed = load_plan(args.plan, info.duration)
+    wf = load_words(args.words)
+    words, _ = sanitize_words(wf.words, wf.duration)
+    plan_keep = keep
     keep = quantize_keep(keep, OUT_FPS)
     if not keep:
         raise MontageError("Nothing is left after snapping the pieces to the frame grid")
+    damaged = snapping_damage(words, plan_keep, keep)
+    if damaged:
+        raise MontageError("Snapping the pieces to the frame grid would cut into speech: " + "; ".join(
+            f"«{w.text}» at {w.start:.2f} s loses {sec * 1000:.0f} ms" for w, sec in damaged) + ". Nothing is rendered.")
     segments = build_map(keep, speed)
     LOG.info("rendering %d piece(s), %.2f s -> %.2f s (speed x%g)", len(keep), sum(b - a for a, b in keep),
              segments[-1].out_end, speed)
     mode = render(video, keep, speed, args.out, args.fade_ms, args.crf)
-    wf = load_words(args.words)
-    words, _ = sanitize_words(wf.words, wf.duration)
-    cut_words = remap_words(words, segments, speed)
+    cut_words =remap_words(words, segments, speed)
     save_words(args.words_out, WordsFile(words=cut_words, duration=segments[-1].out_end, language=wf.language, source=str(args.out)))
     write_json(args.map_out, cut_map_payload(args.out, segments, speed))
     print(f"{args.out}: {segments[-1].out_end:.2f} s, {len(segments) - 1} seam(s), {len(cut_words)}/{len(words)} words kept"

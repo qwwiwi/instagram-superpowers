@@ -328,6 +328,65 @@ def keep_from_removals(removals: list[Removal], duration: float) -> list[tuple[f
     return [(a, b) for a, b in keep if b - a >= MIN_KEEP]
 
 
+def widen_short_pieces(removals: list[Removal], duration: float, speech: list[Span], notes: list[str]) -> list[Removal]:
+    """Give a kept piece that holds speech the minimum length, taking the room from the neighbouring cuts.
+
+    With ``--target-gap 0`` two cuts can sit right around one short word, which leaves a kept piece
+    under ``MIN_KEEP``; such a piece used to be deleted together with the word.
+
+    Args:
+        removals: Sorted, merged removals.
+        duration: Source length.
+        speech: Stretches of kept speech.
+        notes: Receives one line per widened piece.
+
+    Returns:
+        The removals, shortened where a piece was widened; removals that shrink to nothing are gone.
+    """
+    out = [Removal(r.start, r.end, r.kind, list(r.phrases), r.note) for r in removals]
+    for i in range(len(out) + 1):
+        start = out[i - 1].end if i > 0 else 0.0
+        end = out[i].start if i < len(out) else duration
+        length = end - start
+        if length >= MIN_KEEP or not any(min(s.end, end) - max(s.start, start) > EPS for s in speech):
+            continue
+        need = MIN_KEEP - length + 1e-6
+        left = 0.0 if i == 0 else (need if i == len(out) else need / 2)
+        right = need - left
+        if i > 0:
+            out[i - 1].end -= left
+        if i < len(out):
+            out[i].start += right
+        notes.append(f"kept piece {start:.2f}-{end:.2f} s holds speech and is shorter than {MIN_KEEP:g} s: it was widened to {MIN_KEEP:g} s")
+    return [r for r in out if r.end - r.start > EPS]
+
+
+def check_keep_covers_speech(words: list[Word], keep: list[tuple[float, float]], dropped: list[tuple[float, float]]) -> None:
+    """Final check of the keep list: every word that is not dropped must be inside the kept pieces.
+
+    Args:
+        words: Clean words.
+        keep: Kept pieces.
+        dropped: Time ranges of the confirmed drops; their words are meant to go.
+
+    Raises:
+        PlanError: A word is outside the kept pieces, or loses more than ``COLLATERAL_TOLERANCE`` of its length.
+    """
+    problems: list[str] = []
+    for word in words:
+        middle = (word.start + word.end) / 2
+        if any(a - EPS <= middle <= b + EPS for a, b in dropped):
+            continue
+        inside = sum(max(0.0, min(word.end, b) - max(word.start, a)) for a, b in keep)
+        in_piece = any(a - EPS <= middle <= b + EPS for a, b in keep)
+        missing = (word.end - word.start) - inside
+        if not in_piece or missing > COLLATERAL_TOLERANCE:
+            problems.append(f"«{word.text}» at {word.start:.2f}-{word.end:.2f} s")
+    if problems:
+        raise PlanError("The plan loses speech that is not in --drop: " + "; ".join(problems[:5])
+                        + ". Nothing is written. Use a larger --target-gap, or report this take.")
+
+
 def speech_spans(item: dict[str, Any]) -> list[Span]:
     """Stretches of a phrase where something is said.
 
@@ -522,11 +581,14 @@ def make_plan(
     pauses = [p for p in pauses if not any(p.start < d.end + 1e-6 and d.start < p.end + 1e-6 for d in drops)]
     pauses = shrink_to_silence(pauses, items, drop, notes)
     removals = merge_removals(pauses + drops)
+    kept_speech = [s for item in items if int(item["id"]) not in drop for s in speech_spans(item)]
+    removals = widen_short_pieces(removals, duration, kept_speech, notes)
     hits = check_collateral(items, drop, removals)
     if hits:
         raise PlanError(collateral_message(hits, items))
     keep = keep_from_removals(removals, duration)
     validate_keep(keep, duration)
+    check_keep_covers_speech(words, keep, [(r.start, r.end) for r in removals if r.kind == "drop"])
     kept = sum(b - a for a, b in keep)
     return {
         "version": JSON_VERSION,

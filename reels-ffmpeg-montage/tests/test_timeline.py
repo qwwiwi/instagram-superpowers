@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from common import Word, build_map, quantize_keep, remap_words, tokens
+from common import Word, build_map, quantize_keep, remap_words, speech_lost, tokens
 from render_cut import (
     build_audio_graph,
     build_video_graph,
     cut_map_payload,
     loudnorm_second_pass,
     parse_loudnorm_json,
+    snapping_damage,
 )
 from common import MontageError
 
@@ -68,6 +69,38 @@ def test_quantize_snaps_to_frames_and_joins_touching_pieces() -> None:
     assert len(out) == 1  # the 0.3 frame sliver is gone
     for a, b in out:
         assert round(a * 30) == pytest.approx(a * 30) and round(b * 30) == pytest.approx(b * 30)
+
+
+def test_quantize_rounds_outward_so_speech_at_the_edge_survives() -> None:
+    # The last word ends at 4.013 s; rounding to the nearest frame (4.000) cut 13 ms of it.
+    out = quantize_keep([(1.013, 4.013)], fps=30)
+    assert out[0][0] <= 1.013 + 1e-9 and out[0][1] >= 4.013 - 1e-9
+    assert out[0][0] == pytest.approx(1.0) and out[0][1] == pytest.approx(4.0333333)
+
+
+def test_quantize_never_loses_a_second_of_a_piece_to_rounding() -> None:
+    for start in (0.001, 0.016, 0.0166, 0.0167, 0.03, 0.5):
+        for end in (1.0, 1.001, 1.016, 1.0167, 1.0334):
+            (a, b), = quantize_keep([(start, end)], fps=30)
+            assert a <= start + 1e-9 and b >= end - 1e-9
+
+
+def test_speech_lost_after_quantisation_is_reported() -> None:
+    words = [Word("раз", 1.0, 1.5), Word("два", 3.7, 4.013)]
+    inward = [(1.0, 4.0)]  # what nearest-frame rounding used to give
+    lost = speech_lost(words, inward)
+    assert [w.text for w, _ in lost] == ["два"] and lost[0][1] == pytest.approx(0.013)
+    assert speech_lost(words, quantize_keep([(1.0, 4.013)], fps=30)) == []
+
+
+def test_snapping_damage_is_reported_only_for_what_snapping_added() -> None:
+    words = [Word("раз", 1.0, 1.5), Word("два", 3.7, 4.013), Word("край", 4.6, 4.62)]
+    plan = [(1.0, 4.013)]
+    assert snapping_damage(words, plan, quantize_keep(plan)) == []
+    damaged = snapping_damage(words, plan, [(1.0, 4.0)])  # inward rounding, as before the fix
+    assert [w.text for w, _ in damaged] == ["два"]
+    cut_by_plan = [(1.0, 3.9)]  # the plan itself cuts «два»: that is the plan's business, not the snapping's
+    assert snapping_damage(words, cut_by_plan, quantize_keep(cut_by_plan)) == []
 
 
 def test_tokens_normalise_case_punctuation_and_yo() -> None:

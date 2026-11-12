@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import shutil
 import subprocess
@@ -349,25 +350,53 @@ def remap_words(words: Sequence[Word], segments: Sequence[MapSegment], speed: fl
 
 
 def quantize_keep(keep: Sequence[tuple[float, float]], fps: float = OUT_FPS) -> list[tuple[float, float]]:
-    """Snap kept pieces to the frame grid so video and audio pieces have the same length.
+    """Snap kept pieces outward to the frame grid so video and audio pieces have the same length.
 
     Args:
         keep: Kept pieces in source seconds.
         fps: Frame rate of the grid.
 
     Returns:
-        Pieces on the grid; pieces that become empty are dropped, touching pieces are joined.
+        Pieces on the grid, each at least as long as the original; slivers under half a frame are dropped,
+        touching or overlapping pieces are joined.
     """
-    snapped = [(round(a * fps) / fps, round(b * fps) / fps) for a, b in keep]
+    # Outward: the start goes down and the end goes up to the next frame, so a word that the plan keeps
+    # is never cut at its edge. A sliver that was shorter than half a frame to begin with is not worth a frame.
+    eps = 1e-6
+    snapped = [(math.floor(a * fps + eps) / fps, math.ceil(b * fps - eps) / fps) for a, b in keep if b - a >= 0.5 / fps]
     out: list[tuple[float, float]] = []
     for start, end in snapped:
-        if end - start < 0.5 / fps:
-            continue
         if out and start <= out[-1][1] + 1e-9:
             out[-1] = (out[-1][0], max(out[-1][1], end))
         else:
             out.append((start, end))
     return out
+
+
+def speech_lost(words: Sequence[Word], keep: Sequence[tuple[float, float]], tolerance: float = 0.002) -> list[tuple[Word, float]]:
+    """Words that the kept pieces cut into.
+
+    Used after the pieces are snapped to the frame grid, to confirm the snapping did not eat speech.
+    A word whose middle is outside every kept piece is a dropped word, not a damaged one, and is skipped.
+
+    Args:
+        words: Words with source times.
+        keep: Kept pieces in source seconds.
+        tolerance: Seconds of a word that may be lost without a report.
+
+    Returns:
+        ``(word, seconds lost)`` for each kept word that loses more than ``tolerance``.
+    """
+    lost: list[tuple[Word, float]] = []
+    for word in words:
+        middle = (word.start + word.end) / 2
+        if not any(a <= middle <= b for a, b in keep):
+            continue
+        inside = sum(max(0.0, min(word.end, b) - max(word.start, a)) for a, b in keep)
+        missing = (word.end - word.start) - inside
+        if missing > tolerance:
+            lost.append((word, missing))
+    return lost
 
 
 _TOKEN = re.compile(r"[^\W_]+", re.UNICODE)

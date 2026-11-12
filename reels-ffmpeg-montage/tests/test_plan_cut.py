@@ -9,6 +9,7 @@ from common import Word
 from phrases import build_phrases
 from plan_cut import (
     PlanError,
+    check_keep_covers_speech,
     find_candidates,
     keep_from_removals,
     make_plan,
@@ -183,6 +184,30 @@ def test_keep_is_the_complement_of_the_removals() -> None:
     keep = keep_from_removals([Removal(1.0, 2.0, "pause"), Removal(5.0, 6.0, "tail")], 6.0)
     assert keep == [(0.0, 1.0), (2.0, 5.0)]
     assert keep_from_removals([Removal(0.0, 6.0, "drop")], 6.0) == []
+
+
+def covered(word: Word, keep: list[dict]) -> bool:
+    return any(k["start"] <= word.start + 1e-3 and word.end <= k["end"] + 1e-3 for k in keep)
+
+
+def test_target_gap_zero_does_not_delete_a_short_word_between_two_pauses() -> None:
+    # The middle word is 40 ms long; both pauses around it are cut right up to it, which leaves a 40 ms kept piece.
+    words = [Word("раз", 0.2, 0.7), Word("а", 2.00, 2.04), Word("три", 3.0, 3.5)]
+    plan = make_plan(words, 4.0, items_of(words), drop=[], target_gap=0.0)
+    assert all(covered(w, plan["keep"]) for w in words), plan["keep"]
+    assert all(k["end"] - k["start"] >= 0.05 - 1e-6 for k in plan["keep"])
+
+
+def test_short_piece_at_the_edge_is_widened_not_deleted() -> None:
+    words = [Word("а", 0.0, 0.03), Word("два", 1.5, 2.0)]
+    plan = make_plan(words, 2.5, items_of(words), drop=[], target_gap=0.0, head_air=0.0)
+    assert all(covered(w, plan["keep"]) for w in words), plan["keep"]
+
+
+def test_keep_check_refuses_a_plan_that_loses_speech() -> None:
+    words = [Word("раз", 0.2, 0.7), Word("а", 2.00, 2.04)]
+    with pytest.raises(PlanError, match="loses"):
+        check_keep_covers_speech(words, [(0.1, 0.8)], [])
 
 
 def test_validate_keep_rejects_overlap_and_empty() -> None:
