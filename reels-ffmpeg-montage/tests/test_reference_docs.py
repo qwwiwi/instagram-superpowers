@@ -304,3 +304,36 @@ def test_hook_skeleton_shows_the_stated_number_on_frame_zero() -> None:
     assert script.count('class="row" id="sc1-row') == 3
     assert not re.search(r'tl\.set\("#sc1-row\d", \{ opacity: 0', script), "a hook row is hidden on frame 0"
     assert "(0.85-1.0)" not in patterns  # scale range comment matches rule 1.3 (0.55-1.0)
+
+
+# --- growing card (rule 4.10) ---------------------------------------------------------------------------------------
+
+
+def test_growing_card_rule_and_checklist_row_exist() -> None:
+    reglament, acceptance = _read("montage-reglament.md"), _read("montage-acceptance.md")
+    rule = reglament.split("**4.10. Растущая карточка.**", 1)[1].split("\n## ", 1)[0]
+    for must in ("ТЕКУЩЕГО содержимого", "0,25–0,35 с", "по центру своей зоны", "«•••»", "экранов-превью",
+                 "крупнее"):
+        assert must in rule, must
+    assert re.search(r"^\| 4\.10 \| растущая карточка \|", acceptance, flags=re.M)
+    assert re.search(r"^\| 4\.10 растущая карточка \|", acceptance.split("## 6.", 1)[1], flags=re.M)
+    assert "три точки «печатает» не дольше" not in reglament and "три точки «печатает» или поле" not in reglament
+
+
+def test_growing_card_skeletons_are_deterministic_and_centred() -> None:
+    section = _read("layout-patterns.md").split("### 2.7.", 1)[1].split("\n## ", 1)[0]
+    js = section.split("```js", 1)[1].split("```", 1)[0]
+    assert "Math.random" not in js and "repeat: -1" not in js
+    calls = re.findall(r'growCard\("#(\w+)-wrap", "#\w+-card", \[([\d, ]+)\]', js)
+    assert {name for name, _ in calls} == {"gl", "gc"}
+    for name, heights in calls:
+        values = [int(v) for v in heights.split(",")]
+        assert values == sorted(values) and len(values) >= 3
+        step = values[1] - values[0]
+        assert all(b - a == step for a, b in zip(values, values[1:])), f"{name}: heights grow by one row each"
+        for h in values:
+            top = 140 + (602 - h) / 2
+            band = top - 140                       # the same below the card (shadow to y 750)
+            assert band < 250 and top + h + 8 <= 750, (name, h)
+        # the table states the same heights
+        assert all(f"| {v} |" in section for v in values[:3]), name

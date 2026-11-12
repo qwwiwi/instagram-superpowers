@@ -457,6 +457,96 @@ python3 $S/verify.py reel.mp4                        # duration, size, fps, loud
 Длина `reel.mp4` равна длине `reel-cut.mp4` (±1 кадр), звук – тот же (рендер его не
 меняет). Рендер долгий (минуты): запускай его на переднем плане, не отрывая от терминала.
 
+### 2.7. Растущая карточка (правило 4.10)
+
+Пункт приходит на своём слове – карточка растёт за 0,30 с, соседи едут вместе с ней, и в
+каждый момент карточка стоит по центру своей зоны. Под будущие пункты ничего не рисуется.
+Высота карточки – единственное анимируемое свойство раскладки (`height`); всё остальное –
+`y`, `scale`, `opacity`. Карточка обрезает содержимое (`overflow: hidden`), поэтому новый
+пункт «открывается» вместе с ростом и не лежит на рамке; бейдж на кромке – сосед в общей
+обёртке, он едет с карточкой и не обрезается. Числа детерминированы: ни `Math.random`, ни
+бесконечных повторов.
+
+Числа (СПЛИТ: зона карточки y 140–742, высота зоны 602, тень 8 px до y 750):
+
+| Скелет | Высота карточки H(k), k – пунктов на экране | k = 1 | k = 2 | k = 3 | k = 4 | Верх `140 + (602 − H) / 2` | Полоса над и под (порог < 250) |
+|---|---|---|---|---|---|---|---|
+| Список: шапка 84, ряд 110, зазор 16, первый ряд с 108, низ 28, рамки 2 × 4 | 128 + 126·k | 254 | 380 | 506 | – | 314 / 251 / 188 | 174 / 111 / 48 |
+| Чат: шапка 84, пузырь 88, зазор 16, первый пузырь с 108, низ 24, рамки 2 × 4 | 124 + 104·k | 228 | 332 | 436 | 540 | 327 / 275 / 223 / 171 | 187 / 135 / 83 / 31 |
+
+В ВИЗУАЛЕ зона y 140–1280 (1140 px), порог 300: блок с первым пунктом – не ниже 542 px.
+Для списка это первый ряд × 1,6 (ряд 176, кегль 52, значок 84) вместе с заголовком-героем
+120 px: `4 + 84 + 24 + 120 + 24 + 176 + 28 + 4 = 464` – мало, поэтому под карточкой с
+первого кадра стоит второй элемент фразы (панель 300 px с зазором 40): общий блок 804 px,
+полосы по 168 px. Когда приходит второй ряд, первый уменьшается до 1,0 (`scale`, 0,30 с), а
+блок пересчитывается по той же формуле.
+
+```html
+<!-- Growing list (split). Wrapper moves (y), card grows (height); rows sit at their final tops inside the card. -->
+<div id="gl-wrap" style="position:absolute; left:120px; top:0; width:840px">
+  <div class="card" id="gl-card" style="position:relative; left:0; top:0; width:840px; height:254px; overflow:hidden">
+    <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg></span>ПЛАН</div>
+    <div class="row" id="gl-1" style="top:108px; height:110px"><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>первый пункт</b><span class="state pill">ГОТОВО</span></div>
+    <div class="row" id="gl-2" style="top:234px; height:110px"><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>второй пункт</b><span class="state">ждёт</span></div>
+    <div class="row" id="gl-3" style="top:360px; height:110px"><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>третий пункт</b><span class="state">ждёт</span></div>
+  </div>
+  <div class="pill edge" id="gl-badge" style="top:-30px">В РАБОТЕ</div>
+</div>
+
+<!-- Growing chat (split): one bubble per spoken line, no typing dots; the card grows with every bubble. -->
+<div id="gc-wrap" style="position:absolute; left:120px; top:0; width:840px">
+  <div class="card" id="gc-card" style="position:relative; left:0; top:0; width:840px; height:228px; overflow:hidden">
+    <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>ЧАТ
+      <span style="margin-left:auto; font:500 28px 'Ui'; color:var(--accent)">в сети</span></div>
+    <div class="bubble me"  id="gc-1" style="top:108px">первая реплика</div>
+    <div class="bubble bot" id="gc-2" style="top:212px">ответ агента</div>
+    <div class="bubble me"  id="gc-3" style="top:316px">вторая реплика</div>
+    <div class="bubble bot" id="gc-4" style="top:420px">готово <span style="color:var(--accent)">✓</span></div>
+  </div>
+</div>
+```
+
+```css
+/* Chat bubbles: one line, 88 px high, 32 px text; "me" on the right in the accent, the agent on the left. */
+.bubble { position: absolute; height: 88px; max-width: 600px; padding: 0 32px; border-radius: 28px;
+          display: flex; align-items: center; font: 500 32px "Ui", sans-serif; white-space: nowrap; }
+.bubble.me  { right: 32px; background: var(--accent); color: #fff; }
+.bubble.bot { left: 32px; background: #EEF1F4; color: var(--ink); border: 3px solid #D9DEE5; }
+```
+
+```js
+// Growing card (rule 4.10). heights[k] = card height with k+1 items; times[k] = start of the item's word.
+// Zone of the split card: top 140, height 602. Every state is centred: y = top + (zone - h) / 2.
+function growCard(wrap, card, heights, times, zoneTop = 140, zoneH = 602, dur = 0.3) {
+  heights.forEach((h, k) => {
+    const y = zoneTop + (zoneH - h) / 2;
+    if (k === 0) { tl.set(card, { height: h }, 0); tl.set(wrap, { y }, 0); return; }
+    tl.to(card, { height: h, duration: dur, ease: "power2.out" }, times[k]);
+    tl.to(wrap, { y, duration: dur, ease: "power2.out" }, times[k]);   // the badge and the rows move with it
+  });
+}
+// Items after the first: hidden until their word, then revealed by the growing card (clipped by overflow).
+function revealItems(ids, times) {
+  ids.forEach((id, k) => {
+    if (k === 0) return;                                             // the first item is there on the cut
+    tl.set(id, { opacity: 0, scale: 0.92 }, 0);
+    tl.to(id, { opacity: 1, scale: 1, duration: 0.25, ease: "back.out(1.6)" }, times[k]);
+  });
+}
+const listAt = [6.00, 7.10, 8.05];                                   // word starts from words-cut.json
+growCard("#gl-wrap", "#gl-card", [254, 380, 506], listAt);
+revealItems(["#gl-1", "#gl-2", "#gl-3"], listAt);
+const chatAt = [12.00, 12.90, 13.70, 14.40];
+growCard("#gc-wrap", "#gc-card", [228, 332, 436, 540], chatAt);
+revealItems(["#gc-1", "#gc-2", "#gc-3", "#gc-4"], chatAt);
+// Micro-motion while held (rule 13.6), finite: the status pill of the first row pulses 3 times.
+tl.to("#gl-1 .pill", { scale: 1.05, duration: 0.5, repeat: 3, yoyo: true, ease: "sine.inOut" }, listAt[0] + 0.3);
+```
+
+Проверка до рендера: снимки на `t − 0,25`, `t`, `t + 0,15`, `t + 0,35` вокруг прихода каждого
+пункта (`hyperframes snapshot build --at …`): ни одного пустого ряда, пункт не лежит на
+рамке или соседе, полосы над и под карточкой меньше 250 px.
+
 ## 3. Путь Б: склейка ffmpeg
 
 Сцены отрисованы отдельными файлами: `scene-01.mp4` (1080 × 960, для СПЛИТА),
