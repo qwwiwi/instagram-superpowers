@@ -289,3 +289,33 @@ def test_guide_frame_is_full_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     size = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0",
                            str(frame)], capture_output=True, text=True, check=True).stdout.strip()
     assert size == "1080,1920"
+
+
+@NEED_FFMPEG
+@pytest.mark.parametrize("with_pillow", [True, False])
+def test_guide_frame_beyond_the_end_is_a_clear_error(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture, with_pillow: bool) -> None:
+    if with_pillow and not frames_sheet.have_pillow():
+        pytest.skip("Pillow is not installed")
+    clip = tmp_path / "clip.mp4"
+    make_moving_clip(clip, 2.0)
+    monkeypatch.chdir(tmp_path)
+    if not with_pillow:
+        monkeypatch.setattr(head_guide, "have_pillow", lambda: False)
+    # 5 s is far past the end of a 2 s clip; a frame between the last picture and the end counts too.
+    for late in ("5", "2.0"):
+        assert head_guide.main([str(clip), "--time", "1", "--time", late, "--out", "g"]) == 2
+        out = capsys.readouterr().out
+        assert "beyond the end" in caplog.text and "Traceback" not in caplog.text
+        assert " s -> " not in out  # no false success line
+        caplog.clear()
+    assert not list(tmp_path.glob("g-*.png")) and not list(tmp_path.glob("*.raw.png"))
+
+
+def test_missing_or_empty_guide_frame_is_an_error(tmp_path: Path) -> None:
+    empty = tmp_path / "empty.png"
+    empty.write_bytes(b"")
+    for path in (tmp_path / "none.png", empty):
+        with pytest.raises(MontageError, match="no frame was extracted"):
+            head_guide.require_frame(path, 5.0)

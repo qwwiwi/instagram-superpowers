@@ -24,8 +24,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from common import MontageError, run_ffmpeg, setup_logging
-from frames_sheet import have_drawtext, have_pillow
+from common import MontageError, probe, run_ffmpeg, setup_logging
+from frames_sheet import have_drawtext, have_pillow, video_duration
 
 LOG = logging.getLogger("reels.head_guide")
 
@@ -232,6 +232,29 @@ def report_numbers(top: int, chin: int, eyes: int | None) -> None:
         print(f"speaker shot: caption mode {slot.mode}, block y {slot.box_top}-{slot.box_bottom}, up to {slot.lines} line(s)")
 
 
+def check_times_inside(video: Path, times: list[float]) -> None:
+    """Fail before any frame is drawn when a time lies at or past the end of the video stream.
+
+    ffmpeg exits with success and writes no image for a seek past the end, so the check is done on the
+    length of the video stream (the container may be longer when the audio runs past the picture).
+
+    Raises:
+        MontageError: A requested second is not inside the video.
+    """
+    length = video_duration(video, probe(video).duration)
+    late = [t for t in times if t >= length]
+    if late:
+        shown = ", ".join(f"{t:.2f}" for t in late)
+        raise MontageError(f"--time {shown} s is beyond the end of the video (the picture lasts {length:.2f} s): "
+                           "give a second before the end")
+
+
+def require_frame(path: Path, seconds: float) -> None:
+    """Fail when ffmpeg reported success but wrote no usable image."""
+    if not path.is_file() or path.stat().st_size == 0:
+        raise MontageError(f"no frame was extracted at {seconds:.2f} s (is it beyond the end of the video?)")
+
+
 def run(args: argparse.Namespace) -> int:
     """Draw guide frames and/or print the numbers. Returns the exit code."""
     if (args.top is None) != (args.chin is None):
@@ -246,6 +269,7 @@ def run(args: argparse.Namespace) -> int:
         for t in times:
             if not math.isfinite(t) or t < 0:
                 raise MontageError(f"--time must be a non-negative number, got {t}")
+        check_times_inside(video, times)
         rows = guide_rows(args.step)
         method = "pillow" if have_pillow() else ("drawtext" if have_drawtext() else "none")
         for t in times:
@@ -255,12 +279,14 @@ def run(args: argparse.Namespace) -> int:
                 run_ffmpeg(["-y", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1",
                             "-vf", f"scale={FRAME_W}:-2", str(raw)], "frame export")
                 try:
+                    require_frame(raw, t)
                     draw_pillow(raw, out, rows)
                 finally:
                     raw.unlink(missing_ok=True)
             else:
                 run_ffmpeg(["-y", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1",
                             "-vf", ffmpeg_guide_filter(rows, method == "drawtext"), str(out)], "guide frame")
+                require_frame(out, t)
             print(f"{t:.2f} s -> {out}")
         print(legend(args.step, method != "none"))
     if args.top is not None:
