@@ -100,3 +100,28 @@ def test_main_runs_one_eased_click_when_confirmed(reel: Path, monkeypatch: pytes
             "--x", "200", "--y", "100", "--scale", "2"]
     assert smooth_click.main(args) == 0
     assert ran == [["cliclick", "-e", "200", "c:100,50"]]
+
+
+@pytest.mark.parametrize("name", ["reel-draft.mp4", "DRAFT_reel.mov", "черновик.mp4", "рилс-Черновой.mp4"])
+def test_main_never_clicks_a_draft_even_when_confirmed(
+    name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / name
+    path.write_bytes(b"x")
+    with pytest.raises(Refused, match="test file"):
+        check_confirmation(str(path), name)
+    ran: List[Any] = []
+    monkeypatch.setattr(smooth_click.subprocess, "run", lambda *a, **k: ran.append(a))
+    monkeypatch.setattr(smooth_click.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(smooth_click.shutil, "which", lambda _name: "/usr/local/bin/cliclick")
+    monkeypatch.setattr(smooth_click.time, "sleep", lambda _s: None)
+    args = ["--file", str(path), "--confirm-file", name, "--step", "нажать", "--x", "10", "--y", "10", "--scale", "1"]
+    assert smooth_click.main(args) == 2
+    assert ran == []
+
+
+def test_coordinate_math_for_a_region_screenshot() -> None:
+    # Retina region shot: 400 pt wide region at (300, 200) gives an 800 px wide image.
+    # The scale is image width / REGION width (800 / 400 = 2), not / screen width.
+    scale = 800 / 400
+    assert to_screen_point(400, 200, scale, (300.0, 200.0)) == Point(500, 300)

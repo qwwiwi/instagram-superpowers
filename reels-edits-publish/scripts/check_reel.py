@@ -103,8 +103,9 @@ def probe(path: Path) -> Dict[str, Any]:
         raise CheckError(f"ffprobe failed: {raw.stderr.strip()[:300]}")
     facts = facts_from_ffprobe(json.loads(raw.stdout))
     if facts["has_audio"]:
+        # -xerror: a corrupted stream prints decode errors but exits 0 without it.
         vol = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-af", "volumedetect", "-vn", "-f", "null", "-"],
+            ["ffmpeg", "-hide_banner", "-nostats", "-xerror", "-i", str(path), "-af", "volumedetect", "-vn", "-f", "null", "-"],
             capture_output=True, text=True, check=False,
         )
         facts.update(parse_volumedetect(vol.stderr))

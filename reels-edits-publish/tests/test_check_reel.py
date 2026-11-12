@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
-from check_reel import facts_from_ffprobe, main, parse_rate, parse_volumedetect, verdict
+import pytest
+
+from check_reel import facts_from_ffprobe, main, parse_rate, parse_volumedetect, probe, verdict
 
 GOOD = {"width": 1080, "height": 1920, "fps": 30.0, "has_audio": True, "duration": 41.2, "mean_volume": -20.0}
 
@@ -44,3 +48,22 @@ def test_verdict_rules() -> None:
 
 def test_missing_file_exits_2(tmp_path: Path) -> None:
     assert main([str(tmp_path / "none.mp4")]) == 2
+
+
+@pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="ffmpeg/ffprobe not installed")
+def test_probe_flags_a_corrupted_audio_stream(tmp_path: Path) -> None:
+    # ffmpeg prints decoding errors for this file but still exits 0 without -xerror.
+    clean = tmp_path / "clean.m4a"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", str(clean)],
+        check=True, capture_output=True,
+    )
+    assert "audio_error" not in probe(clean)
+    data = bytearray(clean.read_bytes())
+    for i in range(len(data) // 4, len(data) * 3 // 4, 3):
+        data[i] ^= 0x5A
+    broken = tmp_path / "broken.m4a"
+    broken.write_bytes(bytes(data))
+    facts = probe(broken)
+    assert "audio_error" in facts
+    assert any("decode failed" in p for p in verdict({**GOOD, **facts}))

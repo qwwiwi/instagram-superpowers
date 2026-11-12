@@ -7,9 +7,10 @@ to move the mouse unless ``--confirm-file`` is exactly the file name of
 exists, and its name does not look like a test file.
 
 Coordinates are read from a screenshot (``shot.sh``): pixels of that image. On a
-Retina display one screen point is 2 image pixels, so pass ``--scale`` = image
-width in pixels / screen width in points; for a region screenshot pass its origin
-(in points) with ``--origin``. The cursor moves with easing (``cliclick -e``,
+Retina display one screen point is 2 image pixels. Pass ``--scale`` = image width
+in pixels / width in points of what was captured: the whole screen width for a
+full-screen shot, the region width (``w`` of ``x,y,w,h``) for a region shot, plus
+the region origin (in points) with ``--origin``. The cursor moves with easing (``cliclick -e``,
 acceleration and braking, never a jump), then the script waits 0.3-0.6 s.
 
 Examples::
@@ -42,7 +43,7 @@ LOG = logging.getLogger("edits.smooth_click")
 DEFAULT_EASING = 200
 ALLOWED_SUFFIXES = (".mp4", ".mov")
 # A name with one of these parts is a test or a draft, never a reel to publish.
-TEST_NAME = re.compile(r"(test|тест|проб|sample|dummy|smoke)", re.IGNORECASE)
+TEST_NAME = re.compile(r"(test|тест|проб|sample|dummy|smoke|draft|чернов)", re.IGNORECASE)
 ACTIONS = ("move", "click")
 
 
@@ -80,7 +81,7 @@ def check_confirmation(file_arg: str, confirm_file: Optional[str]) -> Path:
     if path.suffix.lower() not in ALLOWED_SUFFIXES:
         raise Refused(f"not a video file: {path.name}")
     if TEST_NAME.search(path.name):
-        raise Refused(f"{path.name!r} looks like a test file; test files are never published")
+        raise Refused(f"{path.name!r} looks like a test file or a draft; test files and drafts are never published")
     if not path.is_file():
         raise Refused(f"no such file: {path}")
     return path
