@@ -144,13 +144,14 @@ def find_silences(path: Path, min_len: float, duration: float) -> list[tuple[flo
     return [(s, length if length >= 0 else max(0.0, duration - s)) for s, length in parse_silences(done.stderr)]
 
 
-def speech_margins(quiet: list[Span], duration: float, edge: float = 0.03) -> tuple[float, float]:
+def speech_margins(quiet: list[Span], duration: float, edge: float = 0.1) -> tuple[float, float]:
     """Non-speech at the start and at the end of a file, from its quiet spans.
 
     Args:
         quiet: Quiet spans in time order (see :func:`audio.quiet_spans`).
         duration: File length, seconds.
-        edge: A span that begins (ends) this close to the file edge counts as touching it.
+        edge: A span that begins (ends) this close to the file edge counts as touching it; the container
+            is often a few frames longer than the audio, so the audio may end up to ``edge`` before it.
 
     Returns:
         ``(seconds before the first sound, seconds after the last sound)``.

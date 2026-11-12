@@ -152,3 +152,9 @@ def test_speech_margins_measure_the_non_speech_at_both_ends() -> None:
 def test_verify_fails_a_reel_that_opens_on_dead_air() -> None:
     lead, _ = speech_margins([Span(0.0, 0.65)], 10.0)
     assert lead > DEFAULT_MAX_LEAD
+
+
+def test_speech_end_counts_a_container_longer_than_the_audio() -> None:
+    # The audio stops 0.07 s before the end of the container; the quiet tail still counts.
+    _, trail = speech_margins([Span(45.73, 46.33)], 46.4)
+    assert trail == pytest.approx(0.67)
