@@ -69,6 +69,7 @@ DEFAULT_TAIL_AIR = 0.25
 # A sound running on further than this is room noise or music, not a phoneme: the stamp is trusted then.
 EDGE_REACH = 0.6
 # Stamps lying wholly in silence: the voice nearest to them, at most this far away, is the speech, source s.
+# Neither edge moves out by more than this when taking that voice in.
 STALE_REACH = 1.5
 MIN_SPEED = 0.5
 MAX_SPEED = 2.0
@@ -182,7 +183,8 @@ def speech_edges(words: list[Word], quiet: list[Span] | None, duration: float | 
       by at most ``EDGE_REACH`` is speech the stamp missed: the edge goes to its start (end);
     * when no sound at all overlaps the padded words (stale stamps, typical of a one-word answer stamped
       in the silence next to its voice), the nearest sound within ``STALE_REACH`` is the speech and the
-      span grows to take it in.
+      span grows to take it in, each edge by at most ``STALE_REACH``; a sound whose far end lies further out
+      is not taken and the stamps stay.
 
     Without energy data the word times are used as they are.
 
@@ -205,7 +207,10 @@ def speech_edges(words: list[Word], quiet: list[Span] | None, duration: float | 
     sounds = sounding_spans(quiet, duration)
     inside = [s for s in sounds if s.end > low + EPS and s.start < high - EPS]
     if not inside:
-        near = [s for s in sounds if max(0.0, s.start - high, low - s.end) <= STALE_REACH]
+        # Near enough to be the voice, and short enough that neither edge moves out by more than STALE_REACH:
+        # a long sound (the rest of the take, music) next to a stale stamp is not taken automatically.
+        near = [s for s in sounds if max(0.0, s.start - high, low - s.end) <= STALE_REACH
+                and onset - s.start <= STALE_REACH and s.end - offset <= STALE_REACH]
         if near:
             sound = min(near, key=lambda s: max(0.0, s.start - high, low - s.end))
             return min(onset, sound.start), max(offset, sound.end)

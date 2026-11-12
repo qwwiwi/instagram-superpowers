@@ -144,3 +144,14 @@ def test_a_gap_inside_the_audio_is_not_silence_at_the_end(tmp_path: Path) -> Non
     info = probe(clip)
     checks = {c.name: c for c in run_checks(clip, info, None, 90.0, 99.0, 5.0, max_trail=0.1)}
     assert checks["speech end"].ok, checks["speech end"].line()
+
+
+def test_stale_stamp_does_not_take_a_long_far_sound() -> None:
+    # Review case: the word sits in silence 0-2 s, the file sounds from 2 s to its end at 60 s. The sound is near
+    # the stamp but its far end is 58.8 s away: it is not taken automatically, the stamps stay.
+    from plan_cut import speech_edges
+
+    words = [Word("нет", 1.0, 1.2)]
+    assert speech_edges(words, [Span(0.0, 2.0)], duration=60.0) == (1.0, 1.2)
+    # mirrored: sound from 0 s to 58 s, the word at 58.8-59.0 s in silence
+    assert speech_edges([Word("нет", 58.8, 59.0)], [Span(58.0, 60.0)], duration=60.0) == (58.8, 59.0)
