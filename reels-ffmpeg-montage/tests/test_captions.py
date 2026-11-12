@@ -132,7 +132,7 @@ def test_style_places_captions_in_the_safe_zone() -> None:
     margin_l, margin_r, margin_v = (int(x) for x in fields[-4:-1])
     bottom = 1920 - margin_v  # the bottom edge of the text box
     centre = bottom - FONT_SIZE / 2
-    assert 0.74 <= centre / 1920 <= 0.78  # lower third, below the face
+    assert 0.74 <= centre / 1920 <= 0.781  # lower third, below the face (rounding to a pixel row)
     assert (bottom + int(fields[-7]) + int(fields[-6])) / 1920 <= 0.82  # outline and shadow still above the Instagram zone
     assert 1080 - margin_l - margin_r == MAX_LINE_WIDTH
     assert "PlayResX: 1080" in ass and "PlayResY: 1920" in ass

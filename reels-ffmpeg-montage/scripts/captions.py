@@ -2,11 +2,11 @@
 """Burned-in captions from words-cut.json, two backends.
 
 Usage:
-    captions.py reel-cut.mp4 words-cut.json [--backend auto|ass|png] [--y 0.76] [--out reel-captioned.mp4]
+    captions.py reel-cut.mp4 words-cut.json [--backend auto|ass|png] [--y 0.78] [--out reel-captioned.mp4]
 
 Layout: 2-4 words per line, the current word highlighted, a large bold font with a thick
 outline and a soft shadow. The line sits in the lower third of the frame: the centre of its
-block is at ``CAPTION_CENTER_Y`` (0.76) of the frame height, below the face of a normally framed
+block is at ``CAPTION_CENTER_Y`` (0.78) of the frame height, below the face of a normally framed
 talking head and above the zone the Instagram interface covers at the bottom; ``--y`` moves it.
 It is kept inside side margins that stay clear of the buttons on the right. No line is wider
 than ``MAX_LINE_WIDTH`` pixels (a lone word that is wider is shrunk). Sizes are given for a
@@ -41,11 +41,11 @@ FONT_SIZE = 78
 OUTLINE = 9
 SHADOW_OFFSET = 4  # px down; the png backend blurs the shadow, libass draws it hard at 50 % opacity
 SHADOW_BLUR = 6  # px, png backend only
-# Vertical position of the caption block: its centre as a fraction of the frame height. 0.76 puts the block in the
+# Vertical position of the caption block: its centre as a fraction of the frame height. 0.78 puts the block in the
 # lower third, below the face of a normally framed talking head, and its bottom edge (with the outline and the shadow)
 # stays above 0.82, clear of the Instagram buttons and the caption field. Both backends read this one constant;
 # ``--y`` overrides it.
-CAPTION_CENTER_Y = 0.76
+CAPTION_CENTER_Y = 0.78
 MIN_CENTER_Y, MAX_CENTER_Y = 0.30, 0.90
 SIDE_MARGIN = 120
 MAX_LINE_WIDTH = OUT_WIDTH - 2 * SIDE_MARGIN

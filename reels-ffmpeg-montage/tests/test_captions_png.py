@@ -235,7 +235,7 @@ def test_caption_sits_in_the_lower_third_below_the_face_and_above_the_interface(
         assert (style.band_top + faint_bottom) / 1920 <= 0.82, (line.text, "shadow reaches below 82 %")
         assert (style.band_top + faint_top) / 1920 >= 0.70, (line.text, "too high: that is the face")
     # the block centre itself, the number the constant promises
-    assert 0.74 <= (style.band_top + style.band_height / 2) / 1920 <= 0.78
+    assert 0.74 <= (style.band_top + style.band_height / 2) / 1920 <= 0.781
 
 
 @NEED_PILLOW
