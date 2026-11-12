@@ -36,6 +36,7 @@ from common import (
     Word,
     WordsFile,
     build_map,
+    fit_words_to_edges,
     load_words,
     probe,
     quantize_keep,
@@ -89,6 +90,18 @@ def load_plan(path: Path, source_duration: float) -> tuple[list[tuple[float, flo
     if not keep:
         raise MontageError("The plan keeps nothing")
     return keep, speed
+
+
+def load_speech_edges(path: Path) -> tuple[float, float] | None:
+    """The real start and end of the voice that ``plan_cut.py`` measured, or None for an older plan."""
+    data = read_json(path)
+    edges = data.get("speech_edges") if isinstance(data, dict) else None
+    if not isinstance(edges, dict):
+        return None
+    onset, offset = edges.get("onset"), edges.get("offset")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (onset, offset)):
+        raise MontageError(f"{path}: `speech_edges` needs numeric onset and offset")
+    return float(onset), float(offset)
 
 
 def snapping_damage(words: list[Word], plan_keep: list[tuple[float, float]],
@@ -288,6 +301,10 @@ def run(args: argparse.Namespace) -> int:
     keep, speed = load_plan(args.plan, info.duration)
     wf = load_words(args.words)
     words, _ = sanitize_words(wf.words, wf.duration)
+    edges = load_speech_edges(args.plan)
+    if edges and words:
+        # the plan moved the edge words onto the measured voice; the captions must follow it
+        words = fit_words_to_edges(words, *edges)
     plan_keep = keep
     keep = quantize_keep(keep, OUT_FPS)
     if not keep:

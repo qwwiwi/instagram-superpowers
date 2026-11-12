@@ -9,6 +9,8 @@ Checks (each prints PASS or FAIL; the exit code is 1 when any FAIL):
   * resolution 1080x1920, frame rate 30, H.264 video, AAC audio, ``faststart`` (moov before mdat);
   * integrated loudness about -14 LUFS (``--lufs-tolerance``) and true peak not above -1 dBTP + 0.5;
   * no silent gap longer than ``--max-silence`` seconds;
+  * speech starts within ``--max-lead`` (0.15 s) of the first frame and ends within ``--max-trail``
+    (0.15 s) of the last one, measured on the sound itself (the quiet spans of ``audio.py``);
   * the first frame is not black.
 
 With a cut map the script also exports a frame just before and just after every
@@ -30,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from audio import Span, analyse_quiet
 from common import (
     MontageError,
     OUT_FPS,
@@ -50,6 +53,9 @@ TARGET_LUFS = -14.0
 DEFAULT_LUFS_TOLERANCE = 1.5
 MAX_TRUE_PEAK = -0.5
 DEFAULT_MAX_SILENCE = 0.8
+# A reel opens on the first sound of the hook and closes right after the last word.
+DEFAULT_MAX_LEAD = 0.15
+DEFAULT_MAX_TRAIL = 0.15
 SILENCE_DB = -45.0
 DURATION_TOLERANCE = 0.15
 SEAM_OFFSET = 0.04
@@ -138,6 +144,22 @@ def find_silences(path: Path, min_len: float, duration: float) -> list[tuple[flo
     return [(s, length if length >= 0 else max(0.0, duration - s)) for s, length in parse_silences(done.stderr)]
 
 
+def speech_margins(quiet: list[Span], duration: float, edge: float = 0.03) -> tuple[float, float]:
+    """Non-speech at the start and at the end of a file, from its quiet spans.
+
+    Args:
+        quiet: Quiet spans in time order (see :func:`audio.quiet_spans`).
+        duration: File length, seconds.
+        edge: A span that begins (ends) this close to the file edge counts as touching it.
+
+    Returns:
+        ``(seconds before the first sound, seconds after the last sound)``.
+    """
+    lead = next((s.end for s in quiet if s.start <= edge), 0.0)
+    trail = next((duration - s.start for s in reversed(quiet) if s.end >= duration - edge), 0.0)
+    return max(0.0, lead), max(0.0, trail)
+
+
 def first_frame_luma(path: Path) -> float:
     """Mean luma (0-255) of the first video frame.
 
@@ -156,7 +178,7 @@ def first_frame_luma(path: Path) -> float:
 
 
 def run_checks(path: Path, info: MediaInfo, expected: float | None, max_duration: float, lufs_tolerance: float,
-               max_silence: float) -> list[Check]:
+               max_silence: float, max_lead: float = DEFAULT_MAX_LEAD, max_trail: float = DEFAULT_MAX_TRAIL) -> list[Check]:
     """Run all numeric checks on a reel."""
     checks: list[Check] = []
     checks.append(Check("duration", info.duration <= max_duration,
@@ -183,6 +205,10 @@ def run_checks(path: Path, info: MediaInfo, expected: float | None, max_duration
     gaps = find_silences(path, max_silence, info.duration)
     where = ", ".join(f"{s:.2f}-{s + n:.2f} s" for s, n in gaps[:5])
     checks.append(Check("silent gaps", not gaps, f"none over {max_silence:g} s" if not gaps else f"{len(gaps)} over {max_silence:g} s: {where}"))
+    quiet, _ = analyse_quiet(path)
+    lead, trail = speech_margins(quiet, info.duration)
+    checks.append(Check("speech start", lead <= max_lead, f"first sound of speech at {lead:.2f} s (max {max_lead:g} s)"))
+    checks.append(Check("speech end", trail <= max_trail, f"{trail:.2f} s after the last sound of speech (max {max_trail:g} s)"))
     luma = first_frame_luma(path)
     checks.append(Check("first frame", luma > BLACK_LUMA, f"mean luma {luma:.0f}/255 ({'not black' if luma > BLACK_LUMA else 'BLACK'})"))
     return checks
@@ -241,6 +267,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-duration", type=float, default=DEFAULT_MAX_DURATION, help=f"longest allowed reel, s (default {DEFAULT_MAX_DURATION:g}; set the current Instagram limit)")
     parser.add_argument("--lufs-tolerance", type=float, default=DEFAULT_LUFS_TOLERANCE, help=f"allowed distance from -14 LUFS (default {DEFAULT_LUFS_TOLERANCE})")
     parser.add_argument("--max-silence", type=float, default=DEFAULT_MAX_SILENCE, help=f"longest allowed silent gap, s (default {DEFAULT_MAX_SILENCE})")
+    parser.add_argument("--max-lead", type=float, default=DEFAULT_MAX_LEAD, help=f"longest non-speech before the first word, s (default {DEFAULT_MAX_LEAD})")
+    parser.add_argument("--max-trail", type=float, default=DEFAULT_MAX_TRAIL, help=f"longest non-speech after the last word, s (default {DEFAULT_MAX_TRAIL})")
     parser.add_argument("--no-seams", action="store_true", help="skip the seam frames")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
@@ -260,7 +288,8 @@ def main(argv: list[str] | None = None) -> int:
             map_path = video.parent / "cut-map.json"
         cut_map = load_cut_map(map_path) if map_path else None
         expected = float(cut_map["expected_duration"]) if cut_map and "expected_duration" in cut_map else None
-        checks = run_checks(video, info, expected, args.max_duration, args.lufs_tolerance, args.max_silence)
+        checks = run_checks(video, info, expected, args.max_duration, args.lufs_tolerance, args.max_silence,
+                            args.max_lead, args.max_trail)
         for check in checks:
             print(check.line())
         if cut_map and not args.no_seams:

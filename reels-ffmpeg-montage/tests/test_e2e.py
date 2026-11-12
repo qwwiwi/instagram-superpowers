@@ -85,8 +85,9 @@ def test_words_cut_match_the_new_video(work: dict[str, Path]) -> None:
     assert cut.words[0].start >= 0.0 and cut.words[-1].end <= probe(work["video"]).duration + 0.05
     starts = [w.start for w in cut.words]
     assert starts == sorted(starts)
-    # the first kept word sits 0.2 s into the clip (head air)
-    assert cut.words[0].start == pytest.approx(0.2, abs=0.05)
+    # the reel opens on the first word: at most 0.10 s of air plus one frame of snapping
+    assert 0.0 <= cut.words[0].start <= 0.10 + 1 / 30
+    assert probe(work["video"]).duration - cut.words[-1].end <= 0.10 + 1 / 30
 
 
 def test_verify_passes_and_exports_seam_frames(work: dict[str, Path]) -> None:

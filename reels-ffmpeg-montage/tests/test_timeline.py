@@ -13,7 +13,9 @@ from render_cut import (
     parse_loudnorm_json,
     snapping_damage,
 )
+from audio import Span
 from common import MontageError
+from verify import DEFAULT_MAX_LEAD, speech_margins
 
 
 def test_words_move_left_by_the_removed_time() -> None:
@@ -139,3 +141,14 @@ def test_silent_audio_is_a_clear_error() -> None:
     measured = {"input_i": "-inf", "input_tp": "-inf", "input_lra": "0.0", "input_thresh": "-70.0", "target_offset": "inf"}
     with pytest.raises(MontageError, match="silent"):
         loudnorm_second_pass(measured)
+
+
+def test_speech_margins_measure_the_non_speech_at_both_ends() -> None:
+    quiet = [Span(0.0, 0.65), Span(3.0, 3.4), Span(9.8, 10.0)]
+    assert speech_margins(quiet, 10.0) == (0.65, pytest.approx(0.2))
+    assert speech_margins([Span(3.0, 3.4)], 10.0) == (0.0, 0.0)
+
+
+def test_verify_fails_a_reel_that_opens_on_dead_air() -> None:
+    lead, _ = speech_margins([Span(0.0, 0.65)], 10.0)
+    assert lead > DEFAULT_MAX_LEAD

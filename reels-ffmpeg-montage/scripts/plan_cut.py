@@ -6,7 +6,10 @@ Usage:
 
 What the script decides by itself (mechanics only):
   * pauses longer than ``--min-pause`` are trimmed to ``--target-gap``;
-  * a long silence at the start / the end is trimmed to ``--head-air`` / ``--tail-air``.
+  * the silence and non-speech sound before the first word / after the last word are trimmed to
+    ``--head-air`` / ``--tail-air``. With the energy check on, the edges of speech come from the sound:
+    when the recogniser stamps the first word earlier (or the last word later) than the voice really
+    sounds, the sound wins and the edge words are moved onto it (``speech_edges`` in the plan).
 
 What the script never decides: which words or phrases go. Repeats and false
 starts are only FLAGGED in ``candidates``. The agent shows them to the student and,
@@ -35,6 +38,7 @@ from common import (
     MIN_KEEP,
     MontageError,
     Word,
+    fit_words_to_edges,
     load_words,
     sanitize_words,
     setup_logging,
@@ -52,8 +56,10 @@ LOG = logging.getLogger("reels.plan_cut")
 
 DEFAULT_MIN_PAUSE = 0.4
 DEFAULT_TARGET_GAP = 0.25
-DEFAULT_HEAD_AIR = 0.2
-DEFAULT_TAIL_AIR = 0.5
+# A reel starts on the first sound of the hook and ends right after the last word: at most 0.10 s of
+# non-speech at each end after the frame grid (up to one frame, 0.033 s, is added by the snapping).
+DEFAULT_HEAD_AIR = 0.06
+DEFAULT_TAIL_AIR = 0.06
 MIN_SPEED = 0.5
 MAX_SPEED = 2.0
 # How many phrases ahead a repeat is searched.
@@ -155,6 +161,64 @@ def trim_region(region: Span, air_left: float, air_right: float, quiet: list[Spa
     return Span(start, end)
 
 
+def speech_edges(words: list[Word], quiet: list[Span] | None) -> tuple[float, float]:
+    """Where the voice of the first word starts and the voice of the last word ends.
+
+    The recogniser often stamps the first word from the moment the take starts moving (the speaker
+    reaching for the camera) and the last word long after the voice stops. The quiet spans of the audio
+    are the judge: the onset is the end of the last quiet span that starts no later than the first word's
+    stamp, the offset is the start of the first quiet span that ends no earlier than the last word's stamp.
+    Without energy data, or without such a span, the word times are trusted.
+
+    Args:
+        words: Clean words, time order, at least one.
+        quiet: Quiet spans of the source audio, or None.
+
+    Returns:
+        ``(onset, offset)`` in source seconds; the onset never passes the second word, the offset never
+        goes before the second-last word.
+    """
+    first, last = words[0], words[-1]
+    onset, offset = first.start, last.end
+    if quiet is None:
+        return onset, offset
+    before = [s for s in quiet if s.start <= first.start + EPS]
+    if before:
+        onset = before[-1].end
+    after = [s for s in quiet if s.end >= last.end - EPS]
+    if after:
+        offset = after[0].start
+    onset = min(onset, words[1].start if len(words) > 1 else first.end)
+    offset = max(offset, words[-2].end if len(words) > 1 else last.start)
+    return onset, max(offset, onset)
+
+
+def fit_items_to_edges(items: list[dict[str, Any]], onset: float, offset: float) -> list[dict[str, Any]]:
+    """Copies of the phrase entries with every word and core clamped into ``[onset, offset]``.
+
+    Keeps the phrase table consistent with :func:`common.fit_words_to_edges`, so the head and tail cuts
+    are not mistaken for cuts into speech.
+    """
+    def clamp(value: float) -> float:
+        return min(max(value, onset), offset)
+
+    out: list[dict[str, Any]] = []
+    for item in items:
+        copy = dict(item)
+        if isinstance(item.get("words"), list):
+            copy["words"] = [
+                {**w, "start": clamp(float(w["start"])), "end": clamp(float(w["end"]))}
+                if isinstance(w, dict) and isinstance(w.get("start"), (int, float)) and isinstance(w.get("end"), (int, float))
+                else w
+                for w in item["words"]
+            ]
+        for key in ("core_start", "core_end"):
+            if isinstance(item.get(key), (int, float)):
+                copy[key] = clamp(float(item[key]))
+        out.append(copy)
+    return out
+
+
 # --- plan parts -------------------------------------------------------------------------------------------
 
 
@@ -186,9 +250,10 @@ def plan_pause_removals(
     air = target_gap / 2
     if not words:
         return removals, notes
-    lead = trim_region(Span(0.0, words[0].start), 0.0, head_air, quiet)
-    if lead:
-        removals.append(Removal(lead.start, lead.end, "head", note="silence before the first word"))
+    onset, offset = speech_edges(words, quiet)
+    # Everything before the first sound of speech goes, quiet or not (a hand reaching for the camera, a breath).
+    if onset - head_air >= MIN_CUT:
+        removals.append(Removal(0.0, onset - head_air, "head", note="non-speech before the first word"))
     for left, right in zip(words, words[1:]):
         gap = right.start - left.end
         if gap < min_pause:
@@ -198,9 +263,8 @@ def plan_pause_removals(
             removals.append(Removal(cut.start, cut.end, "pause", note=f"{gap:.2f} s pause after «{left.text}»"))
         else:
             notes.append(f"pause {gap:.2f} s at {left.end:.2f} s left alone: the sound there is not quiet")
-    tail = trim_region(Span(words[-1].end, duration), tail_air, 0.0, quiet)
-    if tail:
-        removals.append(Removal(tail.start, tail.end, "tail", note="silence after the last word"))
+    if duration - (offset + tail_air) >= MIN_CUT:
+        removals.append(Removal(offset + tail_air, duration, "tail", note="non-speech after the last word"))
     return removals, notes
 
 
@@ -575,6 +639,9 @@ def make_plan(
     """
     if not MIN_SPEED <= speed <= MAX_SPEED:
         raise PlanError(f"--speed must be between {MIN_SPEED:g} and {MAX_SPEED:g} (ffmpeg atempo range), got {speed:g}")
+    onset, offset = speech_edges(words, quiet)
+    words = fit_words_to_edges(words, onset, offset)
+    items = fit_items_to_edges(items, onset, offset)
     pauses, notes = plan_pause_removals(words, duration, min_pause, target_gap, head_air, tail_air, quiet)
     drops = plan_drop_removals(items, drop, duration, target_gap, quiet, head_air, tail_air) if drop else []
     # A drop already sets the air on both sides of its cut; a pause cut that touches it would eat that air.
@@ -597,6 +664,7 @@ def make_plan(
                    "energy_check": quiet is not None},
         "speed": speed,
         "drop": sorted(set(drop)),
+        "speech_edges": {"onset": round(onset, 3), "offset": round(offset, 3)},
         "removals": [r.to_dict() for r in removals],
         "keep": [{"start": round(a, 3), "end": round(b, 3)} for a, b in keep],
         "candidates": find_candidates(items),
@@ -649,8 +717,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--speed", type=float, default=1.0, help="speed-up factor 0.5-2.0 applied after the cut (default 1.0)")
     parser.add_argument("--min-pause", type=float, default=DEFAULT_MIN_PAUSE, help=f"trim pauses from this length, s (default {DEFAULT_MIN_PAUSE})")
     parser.add_argument("--target-gap", type=float, default=DEFAULT_TARGET_GAP, help=f"gap left after trimming, s (default {DEFAULT_TARGET_GAP})")
-    parser.add_argument("--head-air", type=float, default=DEFAULT_HEAD_AIR, help=f"silence kept before the first word, s (default {DEFAULT_HEAD_AIR})")
-    parser.add_argument("--tail-air", type=float, default=DEFAULT_TAIL_AIR, help=f"silence kept after the last word, s (default {DEFAULT_TAIL_AIR})")
+    parser.add_argument("--head-air", type=float, default=DEFAULT_HEAD_AIR, help=f"non-speech kept before the first sound of speech, s (default {DEFAULT_HEAD_AIR})")
+    parser.add_argument("--tail-air", type=float, default=DEFAULT_TAIL_AIR, help=f"non-speech kept after the last sound of speech, s (default {DEFAULT_TAIL_AIR})")
     parser.add_argument("--source", type=Path, help="video for the quiet-sound check (default: the one in words.json)")
     parser.add_argument("--no-energy", action="store_true", help="trust the word times, skip the quiet-sound check")
     parser.add_argument("--out", type=Path, default=Path("cut-plan.json"), help="plan file (default ./cut-plan.json)")
