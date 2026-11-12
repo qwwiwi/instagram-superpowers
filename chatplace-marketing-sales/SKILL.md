@@ -13,6 +13,38 @@ description: "Создание новых элементов воронки в C
 
 ---
 
+## Что нужно до начала
+
+1. **Аккаунт ChatPlace с подключённым Instagram.** Бот Instagram-аккаунта должен быть создан и подключён в кабинете ChatPlace. Для кодовых слов AI-пакет не нужен. Какой тариф ChatPlace требуется для доступа к API, проверьте на сайте ChatPlace: в этом скилле это не зафиксировано.
+2. **API-ключ ChatPlace.** Создаётся в настройках кабинета ChatPlace, раздел API/MCP. Точный путь по меню может отличаться в вашей версии кабинета – если раздела не видно, найдите в настройках пункт про API или MCP. Ключ сохраните сразу и никому не показывайте.
+3. **Файл с ключами** `~/.secrets/chatplace/env`:
+
+   ```bash
+   mkdir -p ~/.secrets/chatplace
+   cat > ~/.secrets/chatplace/env <<'EOF'
+   export CHATPLACE_API_KEY="<ВАШ_КЛЮЧ>"
+   export CHATPLACE_BOT_ID="<ID_БОТА>"
+   EOF
+   chmod 600 ~/.secrets/chatplace/env
+   ```
+
+4. **Bot id** – вызов `bots_list`:
+
+   ```bash
+   source ~/.secrets/chatplace/env
+   curl -sS -X POST "https://mcp.chatplace.io/mcp" \
+     -H "Authorization: Bearer $CHATPLACE_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"bots_list","arguments":{}}}'
+   ```
+
+   В ответе найдите бота своего Instagram и впишите его id в `CHATPLACE_BOT_ID`. Если ответ пришёл HTML-страницей с 403 – см. Troubleshooting.
+5. **`curl` и `jq`** в терминале.
+
+**Не нужно для кодовых слов, делается по желанию:** Telegram-канал со ссылкой-приглашением и учёт источников подписки в своей таблице; AI-агент (требует платного AI-пакета).
+
+---
+
 ## Главные правила (выучить до кода)
 
 ### Правило 1: кодовое слово = 4 элемента за один проход
@@ -76,14 +108,14 @@ source ~/.secrets/chatplace/env   # $CHATPLACE_API_KEY, $CHATPLACE_BOT_ID
 
 Полный playbook — [references/keyword-workflow.md](references/keyword-workflow.md). Короткая версия:
 
-1. **Invite link** — Telegram Bot API `createChatInviteLink` + сохранить в свой реестр источников.
+1. **(ОПЦИОНАЛЬНО) Invite link** – нужен, только если воронка ведёт в ваш Telegram-канал: Telegram Bot API `createChatInviteLink`; запись в реестр источников – тоже по желанию. Без канала пропустите шаг.
 2. **Tag** (`tags_create`, name=`kw_<keyword>`) для сегментации.
 3. **Automation** (`automations_quick_setup`): botId, `triggerType:["messageContains","commentContains"]`, `startMessages` = 7+ вариантов, `templateType:"base"`, `welcomeMessage` / `welcomeButton` / `messageWithLink` / `buttonText` / `buttonLink` (+ опционально `additionalMaterialMessage` / `additionalMaterialDelayType` / `additionalMaterialDelayValue`). Что делать дальше – [references/funnel-flow.md](references/funnel-flow.md).
 4. **Action** (`automations_actions_setup`) — добавить тег на первое сообщение.
 5. **Comment auto-reply rule** (`comments_create`): type=equals, startMessages=те же 7+, answers=3+ ротации без эмодзи и ссылок.
 6. **Тест** — вручную под постом и в DM.
 
-Существующие keywords держите в своём реестре (БД / spreadsheet).
+Существующие keywords можно вести в своём реестре (таблица / spreadsheet) – по желанию; сами автоматизации всегда можно перечитать из ChatPlace tools группы `automations_*`.
 
 ---
 
