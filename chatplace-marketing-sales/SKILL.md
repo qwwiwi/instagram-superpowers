@@ -53,7 +53,7 @@ source ~/.secrets/chatplace/env
 
 1. **Invite link** — Telegram Bot API `createChatInviteLink` + сохранить в свой реестр источников.
 2. **Tag** (`tags_create`, name=`kw_<keyword>`) для сегментации.
-3. **Automation** (`automations_quick_setup`): botId, commentEquals=7+ variants, messageEquals=те же, welcome + URL-кнопка.
+3. **Automation** (`automations_quick_setup`): botId, `triggerType:["messageContains","commentContains"]`, `startMessages` = 7+ вариантов, `templateType:"base"`, `welcomeMessage` / `welcomeButton` / `messageWithLink` / `buttonText` / `buttonLink` (+ опционально `additionalMaterialMessage` / `additionalMaterialDelayType` / `additionalMaterialDelayValue`). Что делать дальше – [references/funnel-flow.md](references/funnel-flow.md).
 4. **Action** (`automations_actions_setup`) — добавить тег на первое сообщение.
 5. **Comment auto-reply rule** (`comments_create`): type=equals, startMessages=те же 7+, answers=3+ ротации без эмодзи и ссылок.
 6. **Тест** — вручную под постом и в DM.

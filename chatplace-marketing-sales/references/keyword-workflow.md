@@ -32,25 +32,50 @@ curl -sS -X POST "$API" \
 
 ### 3. Automation через quick_setup
 
+Схема `automations_quick_setup` (актуальная): триггер задаётся парой `triggerType` + `startMessages` (не `commentEquals` / `messageEquals`), тексты – полями `welcomeMessage`, `welcomeButton`, `messageWithLink`, `buttonText`, `buttonLink` (не `welcomeText` / `buttonUrl`).
+
+| Поле | Обязательно | Что это |
+|---|---|---|
+| `botId` | да | id бота из `bots_list` |
+| `triggerType` | да | `["messageContains","commentContains"]` – ловим и слово в DM, и слово в комментарии |
+| `startMessages` | да | 7+ написаний слова (регистры и алфавиты) |
+| `templateType` | да | `"base"` – оба сообщения создаются сразу в типе `Template`, кнопка со ссылкой работает |
+| `welcomeMessage` | да | первое сообщение (гейт), без ссылки |
+| `welcomeButton` | да | надпись на кнопке гейта |
+| `messageWithLink` | да | второе сообщение – то, что открывается по кнопке гейта |
+| `buttonText` | да | надпись на кнопке со ссылкой |
+| `buttonLink` | да | ссылка кнопки |
+| `additionalMaterialMessage` | нет | отложенное сообщение (например, карточка канала) |
+| `additionalMaterialDelayType` | нет | единица задержки, например `"hour"` |
+| `additionalMaterialDelayValue` | нет | число единиц, например `1` |
+
 ```bash
-jq -n --arg b "$BOT" --arg url "https://t.me/+<INVITE_LINK>" '{
+URL="https://yourdomain.com/guide"   # куда ведёт кнопка в оффере
+jq -n --arg b "$BOT" --arg url "$URL" '{
   jsonrpc:"2.0",id:1,method:"tools/call",params:{
     name:"automations_quick_setup",
     arguments:{
       botId: $b,
-      name: "WORKSHOP keyword",
-      commentEquals: ["workshop","Workshop","WORKSHOP","WorkShop","воркшоп","Воркшоп","ВОРКШОП"],
-      messageEquals: ["workshop","Workshop","WORKSHOP","WorkShop","воркшоп","Воркшоп","ВОРКШОП"],
-      welcomeText: "Привет! Держи ссылку на воркшоп",
+      triggerType: ["messageContains","commentContains"],
+      startMessages: ["workshop","Workshop","WORKSHOP","WorkShop","воркшоп","Воркшоп","ВОРКШОП"],
+      templateType: "base",
+      welcomeMessage: "Лови. Внутри – разбор по воркшопу. Жми «Забрать», пришлю.",
+      welcomeButton: "Забрать",
+      messageWithLink: "Держи материал. А следом расскажу, что делать дальше.",
       buttonText: "Открыть",
-      buttonUrl: $url
+      buttonLink: $url,
+      additionalMaterialMessage: "Пока пробуешь – загляни в мой канал.",
+      additionalMaterialDelayType: "hour",
+      additionalMaterialDelayValue: 1
     }
   }
 }' > /tmp/automation.json
 curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Content-Type: application/json' --data-binary @/tmp/automation.json
 ```
 
-Запиши `automationId` и `stepId`/`messageId` из ответа.
+Три последних поля (`additionalMaterial*`) можно убрать – тогда отложенного сообщения не будет.
+
+Запиши `automationId` и `stepId`/`messageId` из ответа. Дальше – вторая кнопка и отложенная карточка: [funnel-flow.md](funnel-flow.md).
 
 ### 4. Action setup — теггирование
 
@@ -107,7 +132,7 @@ curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Conten
 - [ ] Ссылка в Supabase `invite_links_registry`
 - [ ] Ссылка в вашем трекере источников (если используете)
 - [ ] Tag создан
-- [ ] Automation создана с 7+ case variants в `commentEquals` И `messageEquals`
+- [ ] Automation создана с `triggerType:["messageContains","commentContains"]` + 7+ case variants в `startMessages`
 - [ ] Tag action навешен на первое сообщение
 - [ ] **Comment auto-reply rule создан** (самое частое упущение!)
 - [ ] Rule с теми же 7+ variants в `startMessages`
