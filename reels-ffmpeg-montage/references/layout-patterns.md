@@ -102,7 +102,7 @@ build/
     --bg-dark: #111418; --grid-dark: #1F242B;
     --bg-accent: #0B7285; --bg-light: #EEF1F4; --grid-light: #D9DEE5;
     --card: #FFFFFF; --card-dark: #0B0D10; --ink: #111111; --muted: #5B6270;
-    --ink-on-dark: #FFFFFF; --muted-on-dark: #9AA3B2;
+    --ink-on-dark: #FFFFFF; --muted-on-dark: #9AA3B2; --muted-on-accent: #E3F4F7; /* rule 6.5: 4.9:1 on the accent */
     --accent: #0B7285; --accent-on-dark: #66D9E8; --signal: #E8590C; --signal-text: #C2410C;
     --mark: #D3EEF2;
   }
@@ -379,8 +379,11 @@ cat > caps.graph <<'EOF'
 [0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]
 EOF
 ffmpeg -y -i reel-nocap.mp4 -i captions.mov -filter_complex_script caps.graph \
-  -map "[v]" -map 0:a -c:v libx264 -crf 18 -c:a copy reel.mp4
+  -map "[v]" -map 0:a -c:v libx264 -crf 18 -c:a copy -movflags +faststart reel.mp4
 ```
+
+Без `-movflags +faststart` ffmpeg пишет `moov` в конец файла, и `verify.py` такой файл отклонит.
+Ключ нужен в той команде, что пишет итоговый `reel.mp4`.
 
 - Или нарисовать каждое состояние субтитра в PNG 1080 × 1920 (Pillow) и наложить списком
   concat, как это делает `captions_png.py` этапа 1 (одна картинка на состояние, пустая
