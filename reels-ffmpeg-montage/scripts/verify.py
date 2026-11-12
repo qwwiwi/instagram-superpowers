@@ -142,8 +142,9 @@ def parse_silences(stderr: str) -> list[tuple[float, float]]:
 
 def find_silences(path: Path, min_len: float, duration: float) -> list[tuple[float, float]]:
     """Silent stretches of at least ``min_len`` seconds."""
-    done = run_ffmpeg(["-nostats", "-i", str(path), "-vn", "-af", f"silencedetect=noise={SILENCE_DB:g}dB:d={min_len:g}",
-                       "-f", "null", "-"], "silence detection")
+    # aresample=async fills gaps in the audio timestamps with silence: a hole in the packets is heard as a pause.
+    audio_filter = f"aresample=async=1:first_pts=0,silencedetect=noise={SILENCE_DB:g}dB:d={min_len:g}"
+    done = run_ffmpeg(["-nostats", "-i", str(path), "-vn", "-af", audio_filter, "-f", "null", "-"], "silence detection")
     return [(s, length if length >= 0 else max(0.0, duration - s)) for s, length in parse_silences(done.stderr)]
 
 

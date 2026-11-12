@@ -13,7 +13,7 @@ import pytest
 from audio import ENV_RATE, Span, analyse_pcm
 from common import OUT_FPS, Word, probe, quantize_keep
 from phrases import build_phrases
-from plan_cut import DEFAULT_HEAD_AIR, DEFAULT_TAIL_AIR, EDGE_LIMIT, make_plan
+from plan_cut import DEFAULT_HEAD_AIR, DEFAULT_TAIL_AIR, EDGE_LIMIT, make_plan, speech_edges
 from verify import run_checks
 
 from conftest import NEED_FFMPEG
@@ -88,6 +88,15 @@ def test_stale_single_word_stamp_plans_and_keeps_the_voice(stamp: tuple[float, f
     assert start <= stamp[0] and end >= stamp[1]  # the stamp is never cut into
 
 
+def test_stale_stamp_does_not_take_a_long_far_sound() -> None:
+    # Review case: the word sits in silence 0-2 s, the file sounds from 2 s to its end at 60 s. The sound is near
+    # the stamp but its far end is 58.8 s away: it is not taken automatically, the stamps stay.
+    words = [Word("нет", 1.0, 1.2)]
+    assert speech_edges(words, [Span(0.0, 2.0)], duration=60.0) == (1.0, 1.2)
+    # mirrored: sound from 0 s to 58 s, the word at 58.8-59.0 s in silence
+    assert speech_edges([Word("нет", 58.8, 59.0)], [Span(58.0, 60.0)], duration=60.0) == (58.8, 59.0)
+
+
 # --- the air limit, in output seconds, after speed and the frame grid --------------------------------------------
 
 
@@ -146,12 +155,24 @@ def test_a_gap_inside_the_audio_is_not_silence_at_the_end(tmp_path: Path) -> Non
     assert checks["speech end"].ok, checks["speech end"].line()
 
 
-def test_stale_stamp_does_not_take_a_long_far_sound() -> None:
-    # Review case: the word sits in silence 0-2 s, the file sounds from 2 s to its end at 60 s. The sound is near
-    # the stamp but its far end is 58.8 s away: it is not taken automatically, the stamps stay.
-    from plan_cut import speech_edges
 
-    words = [Word("нет", 1.0, 1.2)]
-    assert speech_edges(words, [Span(0.0, 2.0)], duration=60.0) == (1.0, 1.2)
-    # mirrored: sound from 0 s to 58 s, the word at 58.8-59.0 s in silence
-    assert speech_edges([Word("нет", 58.8, 59.0)], [Span(58.0, 60.0)], duration=60.0) == (58.8, 59.0)
+@NEED_FFMPEG
+def test_a_timestamp_gap_inside_the_audio_fails_the_silent_gap_check(tmp_path: Path) -> None:
+    # The tone has a 1.2 s timestamp gap at 0.6 s (no packets there): the player plays silence. silencedetect on
+    # the raw packets would join the two halves and see no pause; the gap must be restored before it.
+    audio = tmp_path / "hole.m4a"
+    clip = tmp_path / "hole.mp4"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000:duration=1.8",
+         "-af", "asetpts='if(gte(T,0.6),PTS+1.2/TB,PTS)'", "-c:a", "aac", str(audio)],
+        check=True,
+    )
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=1080x1920:r=30:d=3",
+         "-i", str(audio), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+         "-shortest", str(clip)],
+        check=True,
+    )
+    info = probe(clip)
+    checks = {c.name: c for c in run_checks(clip, info, None, 90.0, 99.0, 0.8)}
+    assert not checks["silent gaps"].ok, checks["silent gaps"].line()
