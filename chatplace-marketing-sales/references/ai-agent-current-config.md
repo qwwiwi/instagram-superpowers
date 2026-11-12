@@ -21,7 +21,7 @@
 | answerOnMessageEnabled | `true` | DM отвечает сразу |
 | answerOnCommentEnabled | `false` | комменты пока не трогаем, обкатываем DM |
 | engageCommentUserEnabled | `false` | включить после обкатки комментов |
-| generateButtons | `true` | кнопки к ответам помогают CTR |
+| generateButtons | `true` | quick-reply варианты ответа для пользователя (НЕ URL-кнопки, ссылки идут текстом) |
 | autoRetrainOnDialogs | `true` | обучение по реальным диалогам |
 | responseDelay | `45` | секунд задержки |
 | responseDelayEnabled | `true` | выглядит как живой |
@@ -37,9 +37,10 @@
 - Обращение на «ты», кратко (1–3 предложения), без эмодзи (редко 👍🏻/💌), без канцелярита.
 - **НИКОГДА** не называть даты старта. Только «3 дня», «3-дневный», «скоро».
 - Ссылки:
-  - Тёплый (воркшоп): `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent`
+  - Тёплый (воркшоп): `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent_warm`
   - Возражения: тот же лендинг, `utm_campaign=agent_objection`
-  - Гайды: `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent`
+  - Гайды: `https://yourdomain.com/guides` (ссылка на воркшоп рядом – с `utm_campaign=agent_guides`)
+  - Каждый сегмент – свой URL с явным суффиксом; один URL на все случаи в global rules не прописывать
   - Холодный канал: `https://t.me/+YOUR_CHANNEL_INVITE` (your Telegram channel)
 - Внутренние ссылки (админка, партнёрка) не отдавать.
 - Запрещено: обещать сроки / результаты, давать конкретные даты, советы по здоровью / финансам / юриспруденции.

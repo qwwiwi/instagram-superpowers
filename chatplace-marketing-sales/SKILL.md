@@ -1,13 +1,13 @@
 ---
 name: chatplace-marketing-sales
-description: "Создание новых элементов воронки в ChatPlace: кодовые слова с DM-автоматизацией и публичным ответом под комментом, AI-агент-продажник с knowledge base + topic rules + global rules. Use when: (1) adding new Instagram keyword that must trigger DM + public comment reply, (2) configuring or updating the ChatPlace AI sales agent (your account), (3) writing/editing global rules or topic rules for the AI agent, (4) adding Q&A entries to knowledge base, (5) testing agent answers before publishing, (6) troubleshooting ChatPlace setup (API limits, AI Pack subscription errors). NOT for analytics/reports (out of scope — keep in your own tracking system)."
+description: "Создание элементов воронки в ChatPlace: кодовые слова (Instagram keywords) с DM-автоматизацией и публичным ответом под комментом; опционально – AI-агент-продажник (нужен платный AI-пакет ChatPlace). Use when: (1) adding new Instagram keyword that must trigger DM + public comment reply, (2) editing existing keyword automations or comment rules, (3) troubleshooting ChatPlace setup (Cloudflare 403, buttons that do not open links), (4) optionally: configuring the ChatPlace AI sales agent (global rules, topic rules, knowledge base). NOT for analytics/reports (out of scope — keep in your own tracking system)."
 ---
 
 # ChatPlace Marketing & Sales — создание элементов воронки
 
 Инструмент для создания/обновления двух типов сущностей в ChatPlace:
-1. **Кодовые слова** (Instagram keywords) — автоматика DM + публичный ответ под комментом
-2. **AI-агент-продажник** — единая сущность, отвечает в DM за клиента, ведёт к продаже воркшопа
+1. **Кодовые слова** (Instagram keywords) — автоматика DM + публичный ответ под комментом. Это основное, с него и начинайте.
+2. **AI-агент-продажник** (ОПЦИОНАЛЬНО) — отвечает в DM за владельца. Требует платного AI-пакета ChatPlace; для кодовых слов не нужен.
 
 > **Note:** этот скилл покрывает только создание сущностей (keywords + AI-агент). Аналитика, реестры ссылок, сквозные отчёты — вне скоупа, делайте своим инструментом.
 
@@ -50,12 +50,12 @@ description: "Создание новых элементов воронки в C
 ### Правило 1: кодовое слово = 4 элемента за один проход
 1. **Automation** (`automations_quick_setup`) — DM-воронка: welcome + URL-кнопка
 2. **Comment auto-reply rule** (`comments_create`) — публичный ответ под комментом
-3. **Case variants** — минимум 7 форм: ALL_CAPS, Capitalized, lowercase, CamelCase + кириллица. equals case-sensitive.
+3. **Case variants** — минимум 7 форм: ALL_CAPS, Capitalized, lowercase, CamelCase + кириллица. Правило автоответа с `type: "equals"` чувствительно к регистру, поэтому те же варианты нужны и в нём.
 4. **Оба языка** (если переводимо): EN + RU. Пример: workshop, Workshop, WORKSHOP, WorkShop, воркшоп, Воркшоп, ВОРКШОП.
 
 Почему сразу 4: без comment rule под постом молчание (теряется соцдоказательство). Без case variants триггер не ловит «Workshop» с большой.
 
-### Правило: перед правкой – бэкап, потом проверка
+### Правило 2: перед правкой – бэкап, потом проверка
 
 Относится ко всему, что уже работает у живых людей: тексты, кнопки, ссылки, написания слова, включение и выключение воронок и правил автоответа.
 
@@ -63,12 +63,6 @@ description: "Создание новых элементов воронки в C
 2. **Правка.** Меняйте только то, что нужно, остальное не трогайте.
 3. **Проверка живым запросом.** После правки снова вызовите `automations_get_detail` (для текстов и кнопок) и откройте ссылку или сделайте тест в директе. Код ответа 200 от API не доказывает, что человек увидит то, что вы задумали.
 4. **Массовые правки (2+ слова) – по одному.** Правка, проверка, следующее слово. Перед массовой правкой выпишите список слов, которые затронете, новое значение и то, что не трогаете.
-
-### Правило 2: AI-агент создаётся ТОЛЬКО через UI
-Все `ai_agent_*` падают с `"AI assistant not exists"` пока агент не создан через UI ChatPlace. Увидел — попроси владельца аккаунта: ChatPlace → бот → AI-агент → Создать.
-
-### Правило 3: AI Pack должен быть оплачен
-Публикация падает с `"You have no active ChatPlace AI package"` без AI-пакета. Попроси владельца: Connect AI tools → AI agent → оплата.
 
 ---
 
@@ -125,9 +119,21 @@ source ~/.secrets/chatplace/env   # $CHATPLACE_API_KEY, $CHATPLACE_BOT_ID
 
 ---
 
-## Workflow 2: AI-агент-продажник
+## Workflow 2: AI-агент-продажник (ОПЦИОНАЛЬНО)
+
+> **Эта часть необязательна и требует платного AI-пакета ChatPlace.** Для кодовых слов она не нужна: можно целиком пропустить всё ниже до раздела Troubleshooting.
 
 Полный playbook — [references/ai-agent-workflow.md](references/ai-agent-workflow.md).
+
+### Предусловия
+
+- **Агент создаётся только через UI.** Все `ai_agent_*` падают с `"AI assistant not exists"`, пока агент не создан в кабинете: ChatPlace → бот → AI-агент → Создать.
+- **AI-пакет должен быть оплачен.** Публикация падает с `"You have no active ChatPlace AI package"`: Connect AI tools → AI agent → оплата.
+
+### Правила AI-агента
+
+- **`generateButtons` – это quick-reply варианты ответов пользователя, а не URL-кнопки.** Включённый `generateButtons: true` кнопок-ссылок не создаёт. В `ai_agent_knowledge_base_add` / `_update` поля `buttons` нет. Все ссылки агент отправляет текстом в DM, «вынести URL в кнопку» через API нельзя.
+- **Global rules не должны прописывать ОДИН URL на все случаи.** Если в global rules жёстко стоит один шаблон (например `?utm_campaign=agent`), агент переписывает на него суффиксы из knowledge base, и атрибуция теряется: `agent_warm`, `agent_guides`, `agent_objection` сливаются в `agent`. Правильно: перечислите в global rules 3+ контекстных URL с явными суффиксами, в блоке логики продажи укажите, какой суффикс для какого сегмента, и добавьте запрет «НЕ упрощай и НЕ обрезай utm_campaign». Проверьте через `ai_agent_test_question` на трёх вопросах (тёплый / гайды / возражение): `utm_campaign` в ответе должен совпасть с сегментом.
 
 ### Архитектура
 
