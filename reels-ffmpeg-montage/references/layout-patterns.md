@@ -19,10 +19,11 @@
 | Что | Координаты |
 |---|---|
 | Шов СПЛИТА | y 960 |
-| Полоса карточек СПЛИТА | x 120–960, y 140–750 |
+| Полоса карточек СПЛИТА | x 120–960, y 140–750 вместе с тенью (карточка от y 140 высотой 602 px + тень 8 px) |
+| Колонка кнопок в ВИЗУАЛЕ | в y 1080–1280 содержимое не правее x 940 |
 | Субтитр в СПЛИТЕ | низ блока y 944, строка 80 px (1 строка: y 864–944; 2 строки: y 784–944) |
 | Макет ВИЗУАЛА | x 60–1020, y 130–1280 |
-| Субтитр в ВИЗУАЛЕ | верх блока y 1320, строка 80 px, низ ≤ 1460 |
+| Субтитр в ВИЗУАЛЕ | верх блока y 1320, строка 80 px, низ ≤ 1480 |
 | «Два визуала» | верх y 115–820, разделитель y 836–840, низ y 860–1280 |
 | Субтитр СПИКЕРА «грудь» | верх блока y 1180, низ ≤ 1340 |
 | Субтитр СПИКЕРА «над головой» | низ блока = верх волос − 24 |
@@ -58,7 +59,18 @@ build/
   этапе 1, время ролика и время файла совпадают).
 - Шкала GSAP создаётся остановленной (`{ paused: true }`) и регистрируется в
   `window.__timelines["main"]`. Время – третьим аргументом (`tl.to(el, vars, 1.5)`).
-- Двигать только `x`, `y`, `scale`, `rotation`, `opacity` (не `left` / `top`).
+- Двигать только `x`, `y`, `scale`, `rotation`, `opacity` (не `left` / `top`). У элемента,
+  который двигает GSAP, в CSS нет `transform` (линтер: `gsap_css_transform_conflict`):
+  начальное состояние ставится `tl.set(el, { scaleX: 0 }, 0)`.
+- `fromTo` ставит своё начальное состояние сразу, с начала шкалы. Если начальное
+  состояние видимое (кольцо клика с непрозрачностью 0,9), элемент будет на экране с
+  первого кадра плана. Для таких – `tl.set(el, {...}, t)` и затем `tl.to(el, {...}, t)`.
+- Смена состояния панели (статус → результат) – в один кадр: старое гасится и новое
+  включается в одно и то же время, двигается только положение нового; иначе на стыке
+  состояний будет пустой кадр или текст поверх текста.
+- Шрифты: файлы в `fonts/` через `@font-face`; без файлов – обычные стеки системных
+  шрифтов (`font-family: "Menlo", "Courier New", monospace`). `src: local(...)` в
+  `@font-face` ненадёжен: моноширинный шрифт так «упал» в шрифт с засечками.
 - Колбэков GSAP нет (при перемотке они не срабатывают): набор текста – буквы-`span`,
   которые включаются `tl.set`; счётчик – стопка значений, которые переключаются `tl.set`.
 - Проверка перед рендером: `hyperframes lint build` – 0 ошибок.
@@ -156,7 +168,7 @@ build/
 
   <!-- Plan 1: split scene (visual half) -->
   <div id="sc-1" class="clip scene-split bg-dark" data-start="0" data-duration="3">
-    <div class="card" style="left:120px; top:140px; width:840px; height:560px">
+    <div class="card" style="left:120px; top:140px; width:840px; height:602px">
       <h3>ЗАГОЛОВОК КАРТОЧКИ</h3>
       <div class="row" id="sc1-r1">Первая строка</div>
       <div class="row" id="sc1-r2" style="opacity:0">Вторая строка</div>
@@ -220,12 +232,14 @@ document.querySelectorAll("#field .ch").forEach((ch, k) => tl.set(ch, { opacity:
 const vals = document.querySelectorAll("#counter .v");
 vals.forEach((v, k) => { tl.set(v, { opacity: 1 }, t + k * 0.1); if (k < vals.length - 1) tl.set(v, { opacity: 0 }, t + (k + 1) * 0.1); });
 
-// Progress bar: scaleX from the left edge (CSS: transform-origin: left center).
-tl.fromTo("#bar", { scaleX: 0 }, { scaleX: 1, duration: 0.8, ease: "none" }, t);
+// Progress bar: scaleX from the left edge (CSS: transform-origin: left center, no CSS transform).
+tl.set("#bar", { scaleX: 0 }, 0);
+tl.to("#bar", { scaleX: 1, duration: 0.8, ease: "none" }, t);
 
 // Pointer: travels 0.5 s, click ring 0.2 s, button pressed.
 tl.to("#pointer", { x: 260, y: -40, duration: 0.5, ease: "power1.inOut" }, t);
-tl.fromTo("#ring", { opacity: 0.9, scale: 0.4 }, { opacity: 0, scale: 1.4, duration: 0.2 }, t + 0.5);
+tl.set("#ring", { opacity: 0.9, scale: 0.4 }, t + 0.5);   // not fromTo: it would show the ring from frame 0
+tl.to("#ring", { opacity: 0, scale: 1.4, duration: 0.2 }, t + 0.5);
 tl.to("#send", { scale: 0.94, duration: 0.08 }, t + 0.5);
 tl.to("#send", { scale: 1, duration: 0.08 }, t + 0.58);
 
@@ -258,15 +272,15 @@ tl.to("#doc", { y: -360, duration: 0.4, ease: "power2.inOut" }, t + 0.9);
   <div class="row" id="c-2" style="opacity:0"><span class="box" id="c-2-box"></span>Второй пункт</div>
   <div class="row" id="c-3" style="opacity:0"><span class="box" id="c-3-box"></span>Третий пункт</div>
 </div>
-<div class="card" style="left:60px; top:950px; width:960px; height:300px">
+<div class="card" style="left:60px; top:950px; width:880px; height:300px">
   <div style="font:600 40px 'Ui'">готово <span id="done-n">0</span> из 3</div>
   <div style="margin-top:40px; height:56px; border-radius:28px; background:#EEF1F4; overflow:hidden">
-    <div id="bar" style="height:100%; width:100%; background:var(--accent); transform-origin:left center; transform:scaleX(0)"></div>
+    <div id="bar" style="height:100%; width:100%; background:var(--accent); transform-origin:left center"></div>
   </div>
 </div>
 
 <!-- Comment field with the code word (split, call to action, rule 10.2) -->
-<div class="card" style="left:120px; top:140px; width:840px; height:560px">
+<div class="card" style="left:120px; top:140px; width:840px; height:602px">
   <h3>Комментарий</h3>
   <div style="display:flex; align-items:center; gap:24px; margin-top:36px">
     <div style="width:72px; height:72px; border-radius:50%; background:var(--accent)"></div>
