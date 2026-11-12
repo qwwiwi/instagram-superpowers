@@ -156,5 +156,10 @@ def test_verify_fails_a_reel_that_opens_on_dead_air() -> None:
 
 def test_speech_end_counts_a_container_longer_than_the_audio() -> None:
     # The audio stops 0.07 s before the end of the container; the quiet tail still counts.
-    _, trail = speech_margins([Span(45.73, 46.33)], 46.4)
+    _, trail = speech_margins([Span(45.73, 46.33)], 46.4, audio_end=46.33)
     assert trail == pytest.approx(0.67)
+
+
+def test_speech_end_counts_a_missing_audio_tail_as_silence() -> None:
+    # The video runs 2 s, the audio stops at 1 s while still sounding: one second without sound.
+    assert speech_margins([], 2.0, audio_end=1.0) == (0.0, 1.0)

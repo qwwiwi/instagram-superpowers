@@ -94,7 +94,7 @@ def test_reglament_no_longer_allows_empty_slots_or_placeholders() -> None:
 def test_acceptance_has_a_placeholder_fail_row_and_a_frame_zero_check() -> None:
     text = _read("montage-acceptance.md")
     assert re.search(r"^\| 4\.9 \| заготовки \|.*заготовка на экране = провал", text, flags=re.M)
-    assert re.search(r"^\| 3\.7 \| кадр 0,00: заголовок-хук \|.*≥ 72 px.*≤ 0,15 с", text, flags=re.M)
+    assert re.search(r"^\| 3\.7 \| кадр 0,00: заголовок-хук \|.*≥ 72 px.*≤ 0,10 с", text, flags=re.M)
     assert "слоты будущих пунктов – содержимое" not in text
 
 
@@ -118,3 +118,65 @@ def test_storyboard_and_skeletons_carry_no_placeholders() -> None:
         for word in ("слот", "заглушк", "пунктирная рамка", "подсказкой «добавьте"):
             assert word not in text, f"{word!r} in {name}"
     assert "Кадр 0,00: заголовок-хук" in _read("storyboard-template.md")
+
+
+# --- review 2: the regulation, the acceptance checklist and the skeletons agree ----------------------------------------
+
+
+def _row(text: str, number: str) -> str:
+    rows = [line for line in text.splitlines() if line.startswith(f"| {number} |")]
+    assert rows, f"no row {number}"
+    return "\n".join(rows)
+
+
+def test_speaker_after_a_reduced_split_is_not_a_fail_in_acceptance() -> None:
+    # Regulation 1.4: after a split at scale < 1 the SPEAKER plan runs at scale 1; acceptance 1.4 must allow it.
+    acceptance = (REFERENCES / "montage-acceptance.md").read_text(encoding="utf-8")
+    row = _row(acceptance, "1.4")
+    assert "масштабе 1" in row and "не провал" in row
+
+
+def test_hook_title_may_repeat_the_caption_in_acceptance() -> None:
+    reglament = (REFERENCES / "montage-reglament.md").read_text(encoding="utf-8")
+    assert "на него не действует" in reglament.split("**3.7.", 1)[1].split("**3.8", 1)[0]
+    row = _row((REFERENCES / "montage-acceptance.md").read_text(encoding="utf-8"), "8.3")
+    assert "кроме заголовка-хука" in row
+
+
+def test_two_line_hook_zone_is_the_same_everywhere() -> None:
+    # Two lines of 90 px from y 150 end at y 330: every document must allow the hook down to y 330.
+    reglament = (REFERENCES / "montage-reglament.md").read_text(encoding="utf-8")
+    rule_8_1 = reglament.split("**8.1.", 1)[1].split("**8.2.", 1)[0]
+    rule_3_7 = reglament.split("**3.7.", 1)[1].split("**3.8", 1)[0]
+    acceptance_8 = _row((REFERENCES / "montage-acceptance.md").read_text(encoding="utf-8"), "8.1–8.2")
+    patterns = (REFERENCES / "layout-patterns.md").read_text(encoding="utf-8")
+    for where, text in (("reglament 3.7", rule_3_7), ("reglament 8.1", rule_8_1), ("acceptance 8.1", acceptance_8)):
+        assert "y 140–330" in text, where
+    assert "two lines end at y 330" in patterns
+
+
+ROTATION_DEG = 6.0  # rule 13.5: accents tilt -6...+6 degrees
+SAFE_TOP, SAFE_RIGHT = 140, 960
+
+
+def test_edge_badges_of_the_skeletons_stay_in_the_safe_zone() -> None:
+    import math
+
+    text = (REFERENCES / "layout-patterns.md").read_text(encoding="utf-8")
+    css = re.search(r"\.edge \{[^}]*top: (-?\d+)px; right: (-?\d+)px", text)
+    assert css, ".edge rule not found"
+    edge_top, edge_right = int(css.group(1)), int(css.group(2))
+    cards = list(re.finditer(r'<div class="card[^"]*"[^>]*style="left:(\d+)px; top:(\d+)px; width:(\d+)px', text))
+    checked = 0
+    for badge in re.finditer(r'<div class="pill edge"[^>]*>([^<]+)</div>', text):
+        card = [c for c in cards if c.start() < badge.start()][-1]
+        left, top, width = (int(v) for v in card.groups())
+        # pill: 32 px caps with letter spacing, 26 px padding, 4 px border; 60 px high
+        pill_w = len(badge.group(1)) * 32 * 0.68 + 2 * 26 + 8
+        tilt = math.sin(math.radians(ROTATION_DEG)) * pill_w / 2
+        y_top = top + edge_top - tilt
+        x_right = left + width - edge_right + math.sin(math.radians(ROTATION_DEG)) * 34
+        assert y_top >= SAFE_TOP, f"badge «{badge.group(1)}» reaches y {y_top:.0f} (card top {top})"
+        assert x_right <= SAFE_RIGHT, f"badge «{badge.group(1)}» reaches x {x_right:.0f}"
+        checked += 1
+    assert checked >= 3

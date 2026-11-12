@@ -9,8 +9,9 @@ Checks (each prints PASS or FAIL; the exit code is 1 when any FAIL):
   * resolution 1080x1920, frame rate 30, H.264 video, AAC audio, ``faststart`` (moov before mdat);
   * integrated loudness about -14 LUFS (``--lufs-tolerance``) and true peak not above -1 dBTP + 0.5;
   * no silent gap longer than ``--max-silence`` seconds;
-  * speech starts within ``--max-lead`` (0.15 s) of the first frame and ends within ``--max-trail``
-    (0.15 s) of the last one, measured on the sound itself (the quiet spans of ``audio.py``);
+  * speech starts within ``--max-lead`` (0.10 s) of the first frame and ends within ``--max-trail``
+    (0.10 s) of the last one, measured on the sound itself (the speech-edge quiet spans of ``audio.py``,
+    which keep quiet phonemes); a video that runs on after its audio ends counts that rest as silence;
   * the first frame is not black.
 
 With a cut map the script also exports a frame just before and just after every
@@ -32,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from audio import Span, analyse_quiet
+from audio import Span, analyse_audio
 from common import (
     MontageError,
     OUT_FPS,
@@ -54,8 +55,8 @@ DEFAULT_LUFS_TOLERANCE = 1.5
 MAX_TRUE_PEAK = -0.5
 DEFAULT_MAX_SILENCE = 0.8
 # A reel opens on the first sound of the hook and closes right after the last word.
-DEFAULT_MAX_LEAD = 0.15
-DEFAULT_MAX_TRAIL = 0.15
+DEFAULT_MAX_LEAD = 0.10
+DEFAULT_MAX_TRAIL = 0.10
 SILENCE_DB = -45.0
 DURATION_TOLERANCE = 0.15
 SEAM_OFFSET = 0.04
@@ -144,21 +145,24 @@ def find_silences(path: Path, min_len: float, duration: float) -> list[tuple[flo
     return [(s, length if length >= 0 else max(0.0, duration - s)) for s, length in parse_silences(done.stderr)]
 
 
-def speech_margins(quiet: list[Span], duration: float, edge: float = 0.1) -> tuple[float, float]:
+def speech_margins(quiet: list[Span], duration: float, audio_end: float | None = None,
+                   edge: float = 0.03) -> tuple[float, float]:
     """Non-speech at the start and at the end of a file, from its quiet spans.
 
     Args:
-        quiet: Quiet spans in time order (see :func:`audio.quiet_spans`).
-        duration: File length, seconds.
-        edge: A span that begins (ends) this close to the file edge counts as touching it; the container
-            is often a few frames longer than the audio, so the audio may end up to ``edge`` before it.
+        quiet: Quiet spans in time order (see :func:`audio.quiet_spans`), on the audio clock.
+        duration: File (video) length, seconds.
+        audio_end: Where the decoded audio stops (default: ``duration``). A video that runs on after the
+            audio shows that rest without sound: it counts as non-speech.
+        edge: A span that begins (ends) this close to the audio edge counts as touching it (envelope windows).
 
     Returns:
         ``(seconds before the first sound, seconds after the last sound)``.
     """
+    end = duration if audio_end is None else min(audio_end, duration)
     lead = next((s.end for s in quiet if s.start <= edge), 0.0)
-    trail = next((duration - s.start for s in reversed(quiet) if s.end >= duration - edge), 0.0)
-    return max(0.0, lead), max(0.0, trail)
+    last_sound = next((s.start for s in reversed(quiet) if s.end >= end - edge), end)
+    return max(0.0, lead), max(0.0, duration - last_sound)
 
 
 def first_frame_luma(path: Path) -> float:
@@ -206,8 +210,8 @@ def run_checks(path: Path, info: MediaInfo, expected: float | None, max_duration
     gaps = find_silences(path, max_silence, info.duration)
     where = ", ".join(f"{s:.2f}-{s + n:.2f} s" for s, n in gaps[:5])
     checks.append(Check("silent gaps", not gaps, f"none over {max_silence:g} s" if not gaps else f"{len(gaps)} over {max_silence:g} s: {where}"))
-    quiet, _ = analyse_quiet(path)
-    lead, trail = speech_margins(quiet, info.duration)
+    sound = analyse_audio(path)
+    lead, trail = speech_margins(sound.edge_quiet, info.duration, sound.audio_duration)
     checks.append(Check("speech start", lead <= max_lead, f"first sound of speech at {lead:.2f} s (max {max_lead:g} s)"))
     checks.append(Check("speech end", trail <= max_trail, f"{trail:.2f} s after the last sound of speech (max {max_trail:g} s)"))
     luma = first_frame_luma(path)

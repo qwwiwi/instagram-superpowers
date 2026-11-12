@@ -11,6 +11,7 @@ from plan_cut import (
     DEFAULT_HEAD_AIR,
     PlanError,
     check_keep_covers_speech,
+    edge_air,
     find_candidates,
     keep_from_removals,
     make_plan,
@@ -117,7 +118,7 @@ def test_confirmed_drops_remove_the_phrases_and_keep_air() -> None:
     assert len(drops) == 2
     first, second = drops
     # P1 starts the take: cut from 0 to the head air before P2 (3.6 s)
-    assert first["start"] == 0.0 and first["end"] == pytest.approx(3.6 - DEFAULT_HEAD_AIR)
+    assert first["start"] == 0.0 and first["end"] == pytest.approx(3.6 - edge_air(DEFAULT_HEAD_AIR, 1.0), abs=1e-3)
     # P3 (6.7-7.85) sits between P2 (ends 5.95) and P4 (starts 8.5): 0.125 s of air stays on each side
     assert second["start"] == pytest.approx(5.95 + 0.125)
     assert second["end"] == pytest.approx(8.5 - 0.125)
@@ -166,12 +167,15 @@ def test_parse_drop_list() -> None:
 # --- speed, validity, totals --------------------------------------------------------------------------------------
 
 
-def test_speed_changes_only_the_output_length() -> None:
+def test_speed_changes_only_the_output_length_and_the_edge_air() -> None:
     words = fake_words()
     base = make_plan(words, CLIP_DURATION, items_of(words), drop=[1, 3])
     fast = make_plan(words, CLIP_DURATION, items_of(words), drop=[1, 3], speed=1.25)
-    assert fast["keep"] == base["keep"]
-    assert fast["stats"]["output_seconds"] == pytest.approx(base["stats"]["kept_seconds"] / 1.25)
+    # Inside the reel nothing moves; the edge air is set in output seconds, so the source air grows with the speed.
+    inner = lambda plan: [plan["keep"][0]["end"]] + [k for k in plan["keep"][1:-1]] + [plan["keep"][-1]["start"]]  # noqa: E731
+    assert inner(fast) == inner(base)
+    assert fast["keep"][0]["start"] <= base["keep"][0]["start"] and fast["keep"][-1]["end"] >= base["keep"][-1]["end"]
+    assert fast["stats"]["output_seconds"] == pytest.approx(fast["stats"]["kept_seconds"] / 1.25)
     assert fast["speed"] == 1.25
 
 

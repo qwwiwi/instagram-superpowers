@@ -170,11 +170,13 @@ build/
   .mono { font: 500 40px "Mono", monospace; }
   .box { width: 64px; height: 64px; flex: none; border: 4px solid var(--ink); border-radius: 12px; }
   .box.on { background: var(--accent); }   /* tick state: switch the class layer with tl.set on a twin element */
-  /* Accent pill; .edge puts it over the card edge (rule 13.5). Rotation is set with tl.set, not in CSS. */
+  /* Accent pill; .edge puts it over the TOP edge of the card, inside its width (rule 13.5). Rotation (up to 6 deg)
+     is set with tl.set, not in CSS. With the 30 px overhang and the tilt a card that carries an .edge badge
+     starts at y >= 200, so the badge stays below y 140 and inside x 120-960 (rule 1.7). */
   .pill { height: 60px; padding: 0 26px; border-radius: 30px; background: var(--accent); color: #fff;
           display: inline-flex; align-items: center; font: 700 32px "Ui", sans-serif; letter-spacing: .06em;
           text-transform: uppercase; white-space: nowrap; }
-  .edge { position: absolute; top: -30px; right: -18px; z-index: 3; border: 4px solid var(--ink); }
+  .edge { position: absolute; top: -30px; right: 24px; z-index: 3; border: 4px solid var(--ink); }
   .caret { display: inline-block; width: 6px; height: 1em; margin-left: 6px; background: currentColor; vertical-align: -0.1em; }
 
   /* Captions (rules 7.1-7.5, 7.8). Lines are explicit, never auto-wrapped, centred on x 540. */
@@ -354,7 +356,7 @@ rows.forEach((id, k) => {
 <!-- Terminal (split, rule 13.2): mono caps label + divider, lines "marker + verb + path", key command,
      texture output 18 px, status line at the bottom, final status pill on the edge.
      On the cut two real commands are already there (rule 4.3); nothing stands for a line before it is typed. -->
-<div class="card card-dark" style="left:120px; top:140px; width:840px; height:602px; font-family:'Mono', monospace">
+<div class="card card-dark" style="left:120px; top:200px; width:840px; height:542px; font-family:'Mono', monospace">
   <div style="height:64px; display:flex; align-items:center; border-bottom:2px solid #262C35;
        font:500 28px 'Mono'; letter-spacing:.06em; color:var(--muted-on-dark)">TERMINAL · ~/project</div>
   <div class="mono" style="margin-top:20px"><span style="color:var(--accent-on-dark)">›</span> read <b>README.md</b></div>
@@ -400,7 +402,7 @@ rows.forEach((id, k) => {
 <!-- Comment field with the code word (split, call to action, rules 10.2, 10.7).
      Before the code word: preview of this reel (hook title + like/comment icons), avatar, button.
      The field appears together with its first letter (pop 0.2 s): no empty field, no hint text (rule 4.9). -->
-<div class="card" style="left:120px; top:140px; width:840px; height:602px">
+<div class="card" style="left:120px; top:200px; width:840px; height:542px">
   <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>Комментарий</div>
   <div style="display:flex; align-items:center; gap:20px; margin-top:24px; font:400 32px 'Ui'">
     <b>ТРИ ФАЙЛА</b>
