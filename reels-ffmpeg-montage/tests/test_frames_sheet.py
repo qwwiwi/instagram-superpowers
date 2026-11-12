@@ -229,7 +229,16 @@ def test_split_offset_tightens_for_a_long_face_and_warns_for_a_close_up() -> Non
     close = head_guide.split_offset(top=500, chin=1080)
     assert close.chin == 1560 and close.verdict == "warn"
     too_close = head_guide.split_offset(top=400, chin=1300)
-    assert too_close.verdict == "fail"
+    assert too_close.verdict == "fail"  # close-up without --eyes cannot be checked
+
+
+def test_close_up_cuts_the_hair_and_keeps_the_eyes_and_chin_in_the_half() -> None:
+    # A real close-up: 870 px from the hair to the chin. The tight gap would put the chin at y 1820.
+    fit = head_guide.split_offset(top=630, chin=1500, eyes=1065)
+    assert (fit.y0, fit.chin, fit.eyes, fit.verdict) == (880, 1580, 1145, "warn")
+    assert fit.top < 960 and "close-up" in fit.notes[0]
+    # Eyes too high for the half even with the chin at 1580: re-shoot.
+    assert head_guide.split_offset(top=400, chin=1300, eyes=760).verdict == "fail"
 
 
 def test_split_offset_is_clamped_to_the_frame() -> None:
@@ -241,9 +250,9 @@ def test_split_offset_is_clamped_to_the_frame() -> None:
 
 def test_speaker_caption_goes_to_the_chest_or_above_the_head() -> None:
     chest = head_guide.speaker_caption(top=570, chin=1000)
-    assert (chest.mode, chest.box_top, chest.box_bottom, chest.lines) == ("chest", 1180, 1340, 2)
+    assert (chest.mode, chest.box_top, chest.box_bottom, chest.lines) == ("chest", 1180, 1352, 2)
     above = head_guide.speaker_caption(top=540, chin=1300)
-    assert (above.mode, above.box_bottom, above.box_top, above.lines) == ("above_head", 516, 356, 2)
+    assert (above.mode, above.box_bottom, above.box_top, above.lines) == ("above_head", 516, 344, 2)
     one = head_guide.speaker_caption(top=260, chin=1300)
     assert one.lines == 1 and one.box_bottom == 236
     assert head_guide.speaker_caption(top=150, chin=1300).mode == "none"

@@ -39,12 +39,17 @@ HAIR_GAP_TIGHT = 20
 CHIN_TARGET = 1480
 CHIN_LIMIT = 1520
 CHIN_HARD = 1600
+# Close-up (rule 1.3, step 5): the head is too tall for the half even with the tight gap. The seam then
+# cuts the hair, the chin goes to y 1580 and the eyes must stay at y >= 1100 (brows and forehead in).
+CHIN_CLOSE = 1580
+EYES_MIN = 1100
 # Speaker captions (rule 7.5).
 CHEST_TOP = 1180
-CHEST_BOTTOM = 1340
+CHEST_BOTTOM = 1352
 CHIN_PAD = 14
 HAIR_PAD = 24
 LINE_H = 80
+PLATE_GAP = 12  # plates of two caption lines on the speaker do not touch (rule 7.4)
 TOP_SAFE = 115
 
 
@@ -94,11 +99,24 @@ def split_offset(top: int, chin: int, eyes: int | None = None, src_height: int =
     y0 = top - HAIR_GAP
     if chin - y0 + SEAM > CHIN_TARGET:
         y0 = top - HAIR_GAP_TIGHT
+    close_up = chin - y0 + SEAM > CHIN_HARD
+    if close_up:
+        y0 = chin - (CHIN_CLOSE - SEAM)
     y0 = min(max(y0, 0), src_height - SEAM)
     land_top, land_chin = top - y0 + SEAM, chin - y0 + SEAM
     land_eyes = eyes - y0 + SEAM if eyes is not None else None
     notes: list[str] = []
     verdict = "ok"
+    if close_up and land_chin <= CHIN_HARD:
+        if land_eyes is None:
+            return SplitFit(y0, land_top, land_chin, None, "fail",
+                            ["close-up: the seam cuts the hair; pass --eyes to check that the eyes land at y >= 1100"])
+        if land_eyes < EYES_MIN:
+            return SplitFit(y0, land_top, land_chin, land_eyes, "fail",
+                            [f"close-up: eyes at y {land_eyes} < {EYES_MIN}, the face does not fit the half: re-shoot further away"])
+        notes.append(f"close-up: the seam cuts the hair (top at y {land_top}), chin at y {land_chin}, eyes at y {land_eyes}; "
+                     "allowed, tell the student to sit further from the camera")
+        return SplitFit(y0, land_top, land_chin, land_eyes, "warn", notes)
     if land_chin > CHIN_HARD:
         verdict = "fail"
         notes.append(f"chin at y {land_chin} > {CHIN_HARD}: the take is too close, the face does not fit the half")
@@ -119,13 +137,18 @@ def speaker_caption(top: int, chin: int) -> CaptionSlot:
     if not 0 <= top < chin <= FRAME_H:
         raise MontageError(f"need 0 <= top < chin <= {FRAME_H}, got top={top} chin={chin}")
     if chin + CHIN_PAD <= CHEST_TOP:
-        return CaptionSlot("chest", CHEST_TOP, CHEST_BOTTOM, 2)
+        return CaptionSlot("chest", CHEST_TOP, CHEST_TOP + block_height(2), 2)
     bottom = top - HAIR_PAD
     room = bottom - TOP_SAFE
-    lines = 2 if room >= 2 * LINE_H else (1 if room >= LINE_H else 0)
+    lines = 2 if room >= block_height(2) else (1 if room >= block_height(1) else 0)
     if lines == 0:
         return CaptionSlot("none", 0, 0, 0)
-    return CaptionSlot("above_head", bottom - lines * LINE_H, bottom, lines)
+    return CaptionSlot("above_head", bottom - block_height(lines), bottom, lines)
+
+
+def block_height(lines: int) -> int:
+    """Height of a caption block on the speaker: 80 px plates, 12 px between the lines."""
+    return lines * LINE_H + (lines - 1) * PLATE_GAP
 
 
 def draw_pillow(frame: Path, out: Path, rows: list[tuple[int, bool]]) -> None:
