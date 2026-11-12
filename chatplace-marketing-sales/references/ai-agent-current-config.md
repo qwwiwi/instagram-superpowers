@@ -30,7 +30,7 @@
 
 ## Global rules (ai_agent_update_global_rules, enabled:true)
 
-Полный текст — в `/tmp/global_rules.txt` (снэпшот). Ключевые принципы:
+Полный текст – через `ai_agent_get_global_rules`. Ключевые принципы:
 
 - Роль: AI-ассистент, отвечающий от имени владельца аккаунта @your_instagram.
 - Миссия: продать 3-дневный воркшоп по AI-агентам.
@@ -41,9 +41,9 @@
   - Возражения: тот же лендинг, `utm_campaign=agent_objection`
   - Гайды: `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent`
   - Холодный канал: `https://t.me/+YOUR_CHANNEL_INVITE` (your Telegram channel)
-- **НЕ шли** `your-internal-url.example` (внутренняя ссылка).
+- Внутренние ссылки (админка, партнёрка) не отдавать.
 - Запрещено: обещать сроки / результаты, давать конкретные даты, советы по здоровью / финансам / юриспруденции.
-- Client name: каноническое имя владельца (задайте в global rules; все варианты Whisper-опечаток проверьте через grep перед заливом).
+- Имя владельца: каноническое написание задаётся в global rules.
 
 ## Topic rules (4)
 
@@ -69,8 +69,6 @@
 | Контент/канал | ~4 | «Что в канале владельца?» (каноническое имя — см. global rules), «Про что пишешь?» |
 | Возражения | ~6 | «Дорого», «Нет времени», «Я новичок», «У меня есть ChatGPT» |
 | Разное | ~2 | «Кто ты?», «С кем можно связаться?» |
-
-**⚠ Namespace hygiene:** Whisper voice transcripts часто искажают имена. Перед заливом KB: `grep -iE 'variant1|variant2' *.txt` → заменить на каноническое имя клиента.
 
 ## Как перечитать живую конфигурацию
 
@@ -100,4 +98,4 @@ curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Conten
 
 ## История изменений
 
-- **YYYY-MM-DD** — первый запуск. Агент создан через UI, настроены global rules + 4 topic rules + ~30 KB + settings. Опубликован после подключения AI Pack. Whisper-опечатки в именах почищены grep'ом перед заливом.
+- **YYYY-MM-DD** — первый запуск. Агент создан через UI, настроены global rules + 4 topic rules + ~30 KB + settings. Опубликован после подключения AI Pack.

@@ -61,9 +61,6 @@ description: "Создание новых элементов воронки в C
 ### Правило 3: AI Pack должен быть оплачен
 Публикация падает с `"You have no active ChatPlace AI package"` без AI-пакета. Попроси владельца: Connect AI tools → AI agent → оплата.
 
-### Правило 4: без Whisper-опечаток в продакшне
-Перед заливом текстов (KB, шаблоны, rules) — grep на все Whisper-варианты имени клиента и заменять на каноническое. Voice transcripts often misspell names.
-
 ---
 
 ## Гоча: Template против QuickAnswer
@@ -154,8 +151,8 @@ source ~/.secrets/chatplace/env   # $CHATPLACE_API_KEY, $CHATPLACE_BOT_ID
 
 - **НИКОГДА не называй конкретные даты старта.** Пиши «3 дня», «3-дневный», «за 3 дня».
 - **ВСЕГДА UTM:** `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent`. Суффиксы: `agent_warm`, `agent_guides`, `agent_objection`.
-- **НЕ шли `your-internal-url.example`** — внутренняя ссылка.
-- **Холодный канал:** `https://t.me/+YOUR_CHANNEL_INVITE` (your Telegram channel; track in your subscriber DB).
+- **Внутренние ссылки** (админка, партнёрка) клиентам не отдавать: запретите это в global rules отдельной строкой.
+- **Холодный канал:** `https://t.me/+YOUR_CHANNEL_INVITE` (ваш Telegram-канал, если он есть).
 - **Гайды:** `https://yourdomain.com/guides` — можно клиентам.
 - **Тон:** на «ты», кратко, без эмодзи (редко 👍🏻/💌), без канцелярита, 1-3 предложения.
 
@@ -178,7 +175,6 @@ source ~/.secrets/chatplace/env   # $CHATPLACE_API_KEY, $CHATPLACE_BOT_ID
 | Кнопка есть в `get_detail`, но человек её не видит | Кнопка на action-блоке | Перенести на блок `actionType: "message"` |
 | Агент не ловит опечатки «Cloude/Клоде» | equals case-sensitive | Варианты в KB как вопросы ИЛИ Message Recognition (UI) |
 | Под комментом тишина | Нет comment auto-reply rule | `comments_create` |
-| Whisper misspelling of name | Upload without proofreading | Grep for name variants → replace with canonical |
 
 ---
 
