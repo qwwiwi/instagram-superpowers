@@ -267,43 +267,48 @@ def test_empty_envelope_is_an_error() -> None:
         percentile_threshold([])
 
 
-# --- speech edges: the reel starts on the first sound and ends right after the last word -------------------------
+# --- speech edges: word stamps with a pad, energy only widens ---------------------------------------------------
 
 
-def test_head_cut_follows_the_sound_when_the_stamp_is_early() -> None:
-    # The recogniser stamps the first word from 0.20 s, but the take is quiet until 0.65 s (hand reaching for the camera).
+def test_energy_never_cuts_inside_an_early_stamp() -> None:
+    # The recogniser stamps the first word from 0.20 s, the take is quiet until 0.65 s. The cut stays at the
+    # stamp minus the pad: energy may not move an edge inward.
     words = [Word("ноль", 0.20, 0.65), Word("месяцев", 0.70, 1.10), Word("назад", 1.15, 1.50)]
     quiet = [Span(0.0, 0.65), Span(1.55, 3.0)]
-    removals, _ = plan_pause_removals(words, 3.0, quiet=quiet)
+    removals, _ = plan_pause_removals(words, 3.0, head_air=0.15, tail_air=0.25, quiet=quiet)
     head = next(r for r in removals if r.kind == "head")
     tail = next(r for r in removals if r.kind == "tail")
-    assert head.start == 0.0 and 0.65 - head.end <= 0.10 + 1e-9
-    assert tail.start - 1.55 <= 0.10 + 1e-9 and tail.end == 3.0
+    assert head.start == 0.0 and head.end == pytest.approx(0.05)
+    # the voice sounds to 1.55 s, past the stamp end 1.50 s: that edge moves out to it, then the pad
+    assert tail.start == pytest.approx(1.80) and tail.end == 3.0
 
 
 def test_head_cut_removes_a_noise_before_the_first_word() -> None:
-    # A click at 0.0-0.1 s, then quiet: everything before the voice goes, not only the quiet piece.
+    # A click at 0.0-0.1 s, then quiet: everything before the padded word goes, not only the quiet piece.
     words = [Word("раз", 0.8, 1.2)]
     removals, _ = plan_pause_removals(words, 2.0, quiet=[Span(0.1, 0.8), Span(1.25, 2.0)])
     head = next(r for r in removals if r.kind == "head")
     assert head.start == 0.0 and head.end == pytest.approx(0.8 - DEFAULT_HEAD_AIR)
 
 
-def test_speech_edges_trust_the_words_without_energy() -> None:
+def test_speech_edges_only_widen_the_stamps() -> None:
     words = [Word("раз", 0.3, 0.6), Word("два", 0.9, 1.2)]
     assert speech_edges(words, None) == (0.3, 1.2)
-    # the sound never moves an edge past the neighbouring word
-    assert speech_edges(words, [Span(0.0, 2.0)]) == (0.9, 0.9)
+    # sound everywhere (noise at speech level): further than EDGE_REACH it is not a phoneme, the stamps stay
+    assert speech_edges([Word("раз", 1.0, 1.3), Word("два", 1.6, 2.0)], [], duration=4.0) == (1.0, 2.0)
+    # the voice starts 0.1 s before the stamp and fades 0.15 s after it: the edges move out to it
+    assert speech_edges(words, [Span(0.0, 0.2), Span(1.35, 2.0)], duration=2.0) == (0.2, 1.35)
+    # the sound is quiet inside the stamps: nothing moves in
+    assert speech_edges(words, [Span(0.0, 0.5), Span(1.0, 2.0)], duration=2.0) == (0.3, 1.2)
 
 
-def test_make_plan_moves_the_edge_words_onto_the_sound() -> None:
+def test_make_plan_keeps_the_padded_stamps() -> None:
     words = [Word("ноль", 0.20, 0.65), Word("месяцев", 0.70, 1.10), Word("назад", 1.15, 1.50)]
     quiet = [Span(0.0, 0.65), Span(1.55, 3.0)]
     plan = make_plan(words, 3.0, items_of(words), [], quiet=quiet)
-    assert plan["speech_edges"] == {"onset": 0.65, "offset": 1.55}
-    first = plan["keep"][0]
-    assert 0.65 - first["start"] <= 0.10 + 1e-9
-    assert plan["keep"][-1]["end"] - 1.55 <= 0.10 + 1e-9
+    assert plan["speech_edges"] == {"onset": 0.2, "offset": 1.55}
+    assert plan["keep"][0]["start"] == pytest.approx(0.05)
+    assert plan["keep"][-1]["end"] == pytest.approx(1.80)
 
 
 def test_fit_words_to_edges_moves_a_word_stamped_before_the_voice() -> None:

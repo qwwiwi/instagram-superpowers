@@ -6,10 +6,10 @@ Usage:
 
 What the script decides by itself (mechanics only):
   * pauses longer than ``--min-pause`` are trimmed to ``--target-gap``;
-  * the silence and non-speech sound before the first word / after the last word are trimmed to
-    ``--head-air`` / ``--tail-air``. With the energy check on, the edges of speech come from the sound:
-    when the recogniser stamps the first word earlier (or the last word later) than the voice really
-    sounds, the sound wins and the edge words are moved onto it (``speech_edges`` in the plan).
+  * the edges of the reel come from the word stamps with a safety pad: the cut is ``--head-air``
+    (0.15 s) before the first word's start and ``--tail-air`` (0.25 s) after the last word's end, in
+    output seconds. The sound energy never moves an edge inward (into a stamp); it moves an edge OUTWARD
+    only when speech energy runs on outside the padded words (``cut_edges``, ``speech_edges`` in the plan).
 
 What the script never decides: which words or phrases go. Repeats and false
 starts are only FLAGGED in ``candidates``. The agent shows them to the student and,
@@ -57,15 +57,19 @@ LOG = logging.getLogger("reels.plan_cut")
 
 DEFAULT_MIN_PAUSE = 0.4
 DEFAULT_TARGET_GAP = 0.25
-# A reel starts on the first sound of the hook and ends right after the last word: at most EDGE_LIMIT of
-# non-speech at each end of the OUTPUT, after the speed change and the frame grid. The air is given in output
-# seconds; the snapping to the frame grid adds up to one source frame (1 / (fps * speed) output seconds), so
-# the air actually kept is cut down until air + one frame fits the limit.
-EDGE_LIMIT = 0.10
+# Air at each edge of the reel: at most EDGE_LIMIT seconds of OUTPUT (after the speed change and the frame
+# grid), PASS when air <= EDGE_LIMIT. The pads are given in output seconds; the snapping to the frame grid adds
+# up to one source frame (1 / (fps * speed) output seconds), so a pad is cut down until pad + one frame fits.
+EDGE_LIMIT = 0.30
 # verify.py measures the edges on a 10 ms loudness envelope; the plan stays this far inside the limit.
 EDGE_MEASURE_SLACK = 0.01
-DEFAULT_HEAD_AIR = 0.06
-DEFAULT_TAIL_AIR = 0.06
+DEFAULT_HEAD_AIR = 0.15
+DEFAULT_TAIL_AIR = 0.25
+# Speech energy that starts (ends) at most this far outside an edge word moves the edge outward, source s.
+# A sound running on further than this is room noise or music, not a phoneme: the stamp is trusted then.
+EDGE_REACH = 0.6
+# Stamps lying wholly in silence: the voice nearest to them, at most this far away, is the speech, source s.
+STALE_REACH = 1.5
 MIN_SPEED = 0.5
 MAX_SPEED = 2.0
 # How many phrases ahead a repeat is searched.
@@ -167,47 +171,69 @@ def trim_region(region: Span, air_left: float, air_right: float, quiet: list[Spa
     return Span(start, end)
 
 
-def speech_edges(words: list[Word], quiet: list[Span] | None, duration: float | None = None) -> tuple[float, float]:
-    """Where the voice of the first word starts and the voice of the last word ends.
+def speech_edges(words: list[Word], quiet: list[Span] | None, duration: float | None = None,
+                 pad_before: float = 0.0, pad_after: float = 0.0) -> tuple[float, float]:
+    """Where the speech starts and ends: the word stamps, widened (never narrowed) by speech energy.
 
-    The recogniser often stamps the first word from the moment the take starts moving (the speaker
-    reaching for the camera) and the last word long after the voice stops. The quiet spans of the audio
-    (the speech-edge spans of :func:`audio.analyse_audio`, which keep quiet phonemes) are the judge: the
-    onset is the start of the sound around the first word's stamp (or of the first sound after it, when
-    the stamp lies in silence), the offset is the end of the sound around the last word's stamp (or of the
-    last sound before it). When the stamps are so stale that the offset would come before the onset (a
-    one-word answer stamped in the silence before or after its voice), the sound that starts at the onset
-    gives the offset. Without energy data the word times are trusted.
+    The edges are the first word's start and the last word's end. The quiet spans of the audio may only
+    move them OUTWARD:
+
+    * a sound that overlaps the padded words and starts before the first word (ends after the last word)
+      by at most ``EDGE_REACH`` is speech the stamp missed: the edge goes to its start (end);
+    * when no sound at all overlaps the padded words (stale stamps, typical of a one-word answer stamped
+      in the silence next to its voice), the nearest sound within ``STALE_REACH`` is the speech and the
+      span grows to take it in.
+
+    Without energy data the word times are used as they are.
+
+    Args:
+        words: Clean words, time order, at least one.
+        quiet: Quiet spans of the source audio (pause threshold), or None.
+        duration: Source length; the end of a sound that runs to the end of the file.
+        pad_before: Pad before the first word, source seconds (where the cut will be).
+        pad_after: Pad after the last word, source seconds.
+
+    Returns:
+        ``(onset, offset)`` in source seconds, ``onset <= words[0].start`` and ``offset >= words[-1].end``.
+    """
+    onset, offset = words[0].start, words[-1].end
+    if quiet is None:
+        return onset, offset
+    low, high = max(0.0, onset - pad_before), offset + pad_after
+    if duration is not None:
+        high = min(high, duration)
+    sounds = sounding_spans(quiet, duration)
+    inside = [s for s in sounds if s.end > low + EPS and s.start < high - EPS]
+    if not inside:
+        near = [s for s in sounds if max(0.0, s.start - high, low - s.end) <= STALE_REACH]
+        if near:
+            sound = min(near, key=lambda s: max(0.0, s.start - high, low - s.end))
+            return min(onset, sound.start), max(offset, sound.end)
+        return onset, offset
+    if inside[0].start < onset and onset - inside[0].start <= EDGE_REACH:
+        onset = inside[0].start
+    if inside[-1].end > offset and inside[-1].end - offset <= EDGE_REACH:
+        offset = inside[-1].end
+    return onset, offset
+
+
+def cut_edges(words: list[Word], quiet: list[Span] | None, duration: float, pad_before: float,
+              pad_after: float) -> tuple[float, float, float, float]:
+    """Where the reel is cut at both ends.
 
     Args:
         words: Clean words, time order, at least one.
         quiet: Quiet spans of the source audio, or None.
-        duration: Source length; the end of a sound that runs to the end of the file.
+        duration: Source length.
+        pad_before: Pad before the speech, source seconds.
+        pad_after: Pad after the speech, source seconds.
 
     Returns:
-        ``(onset, offset)`` in source seconds. With two or more words the onset never passes the second
-        word and the offset never goes before the second-last word.
+        ``(cut start, cut end, speech onset, speech offset)``: the cut is the speech span of
+        :func:`speech_edges` with the pads, inside the file.
     """
-    first, last = words[0], words[-1]
-    onset, offset = first.start, last.end
-    if quiet is None:
-        return onset, offset
-    before = [s for s in quiet if s.start <= first.start + EPS]
-    if before:
-        onset = before[-1].end
-    after = [s for s in quiet if s.end >= last.end - EPS]
-    if after:
-        offset = after[0].start
-    if len(words) > 1:
-        onset = min(onset, words[1].start)
-        offset = max(offset, words[-2].end)
-    if offset <= onset + EPS:
-        # The stamps sit in silence on the wrong side of the voice (a short answer stamped before or after
-        # its sound): the sound nearest to the stamps is the speech.
-        sound = nearest_sound(Span(first.start, last.end), quiet, duration)
-        if sound is not None:
-            onset, offset = sound.start, sound.end
-    return onset, max(offset, onset)
+    onset, offset = speech_edges(words, quiet, duration, pad_before, pad_after)
+    return max(0.0, onset - pad_before), min(duration, offset + pad_after), onset, offset
 
 
 def sounding_spans(quiet: list[Span], duration: float | None) -> list[Span]:
@@ -224,20 +250,11 @@ def sounding_spans(quiet: list[Span], duration: float | None) -> list[Span]:
     return out
 
 
-def nearest_sound(stamp: Span, quiet: list[Span], duration: float | None) -> Span | None:
-    """The sounding stretch closest to a stamp (overlapping wins; on a tie the earlier one)."""
-    def distance(sound: Span) -> float:
-        return max(0.0, sound.start - stamp.end, stamp.start - sound.end)
-
-    sounds = sounding_spans(quiet, duration)
-    return min(sounds, key=distance) if sounds else None
-
-
 def edge_air(air: float, speed: float, fps: float = OUT_FPS) -> float:
-    """Source seconds of non-speech to keep at an edge so the output shows at most ``EDGE_LIMIT``.
+    """Source seconds of pad to keep at an edge so the output shows at most ``EDGE_LIMIT`` of air.
 
     Args:
-        air: Wanted non-speech in output seconds.
+        air: Wanted pad in output seconds.
         speed: Speed-up factor applied after the cut.
         fps: Frame rate of the grid the pieces are snapped to (outward, up to one source frame).
 
@@ -251,8 +268,9 @@ def edge_air(air: float, speed: float, fps: float = OUT_FPS) -> float:
 def fit_items_to_edges(items: list[dict[str, Any]], onset: float, offset: float) -> list[dict[str, Any]]:
     """Copies of the phrase entries with every word and core clamped into ``[onset, offset]``.
 
-    Keeps the phrase table consistent with :func:`common.fit_words_to_edges`, so the head and tail cuts
-    are not mistaken for cuts into speech.
+    Keeps the phrase table consistent with :func:`common.fit_words_to_edges`. The edges of
+    :func:`speech_edges` only widen the words, so this is a no-op for plans made by this version; it stays
+    for plans and words made by older ones.
     """
     def clamp(value: float) -> float:
         return min(max(value, onset), offset)
@@ -285,19 +303,17 @@ def plan_pause_removals(
     head_air: float = DEFAULT_HEAD_AIR,
     tail_air: float = DEFAULT_TAIL_AIR,
     quiet: list[Span] | None = None,
-    edge_quiet: list[Span] | None = None,
 ) -> tuple[list[Removal], list[str]]:
-    """Trim long pauses between words and long silence at both ends.
+    """Trim long pauses between words and the non-speech at both ends.
 
     Args:
         words: Clean words.
         duration: Length of the source, seconds.
         min_pause: A gap at least this long is trimmed.
         target_gap: Gap left after trimming (half of it on each side).
-        head_air: Silence kept before the first word, source seconds.
-        tail_air: Silence kept after the last word, source seconds.
+        head_air: Pad kept before the first word, source seconds.
+        tail_air: Pad kept after the last word, source seconds.
         quiet: Quiet spans of the audio, or None to trust the word times.
-        edge_quiet: Quiet spans for the edges of speech (default: ``quiet``).
 
     Returns:
         ``(removals, notes)``; notes name the pauses that were left alone.
@@ -307,11 +323,11 @@ def plan_pause_removals(
     air = target_gap / 2
     if not words:
         return removals, notes
-    onset, offset = speech_edges(words, edge_quiet if edge_quiet is not None else quiet, duration)
-    # Everything before the first sound of speech goes, quiet or not (a hand reaching for the camera, a breath).
-    # The edge limit wins over MIN_CUT: even a sliver of non-speech over the air is cut.
-    if onset - head_air > EPS:
-        removals.append(Removal(0.0, onset - head_air, "head", note="non-speech before the first word"))
+    start, end, _, _ = cut_edges(words, quiet, duration, head_air, tail_air)
+    # Everything before the padded speech goes, quiet or not (a hand reaching for the camera, a breath).
+    # The edge limit wins over MIN_CUT: even a sliver of non-speech over the pad is cut.
+    if start > EPS:
+        removals.append(Removal(0.0, start, "head", note="non-speech before the first word"))
     for left, right in zip(words, words[1:]):
         gap = right.start - left.end
         if gap < min_pause:
@@ -321,8 +337,8 @@ def plan_pause_removals(
             removals.append(Removal(cut.start, cut.end, "pause", note=f"{gap:.2f} s pause after «{left.text}»"))
         else:
             notes.append(f"pause {gap:.2f} s at {left.end:.2f} s left alone: the sound there is not quiet")
-    if duration - (offset + tail_air) > EPS:
-        removals.append(Removal(offset + tail_air, duration, "tail", note="non-speech after the last word"))
+    if duration - end > EPS:
+        removals.append(Removal(end, duration, "tail", note="non-speech after the last word"))
     return removals, notes
 
 
@@ -678,7 +694,6 @@ def make_plan(
     head_air: float = DEFAULT_HEAD_AIR,
     tail_air: float = DEFAULT_TAIL_AIR,
     quiet: list[Span] | None = None,
-    edge_quiet: list[Span] | None = None,
     fps: float = OUT_FPS,
 ) -> dict[str, Any]:
     """Build the cut plan document.
@@ -691,11 +706,10 @@ def make_plan(
         speed: Speed-up factor applied after the cut, 0.5-2.0.
         min_pause: Pauses at least this long are trimmed.
         target_gap: Gap left after trimming.
-        head_air: Non-speech kept before the first sound, OUTPUT seconds (cut down so that, with the speed
-            and one frame of snapping, the reel opens with at most ``EDGE_LIMIT`` of non-speech).
-        tail_air: Non-speech kept after the last sound, output seconds, same limit.
+        head_air: Pad before the first word, OUTPUT seconds (cut down so that, with the speed and one
+            frame of snapping, it stays within ``EDGE_LIMIT``).
+        tail_air: Pad after the last word, output seconds, same limit.
         quiet: Quiet spans of the source audio (pause threshold), or None.
-        edge_quiet: Quiet spans for the edges of speech (default: ``quiet``).
         fps: Frame rate of the cut grid.
 
     Raises:
@@ -703,12 +717,11 @@ def make_plan(
     """
     if not MIN_SPEED <= speed <= MAX_SPEED:
         raise PlanError(f"--speed must be between {MIN_SPEED:g} and {MAX_SPEED:g} (ffmpeg atempo range), got {speed:g}")
-    edges_quiet = edge_quiet if edge_quiet is not None else quiet
-    onset, offset = speech_edges(words, edges_quiet, duration)
+    head_src, tail_src = edge_air(head_air, speed, fps), edge_air(tail_air, speed, fps)
+    _, _, onset, offset = cut_edges(words, quiet, duration, head_src, tail_src)
     words = fit_words_to_edges(words, onset, offset)
     items = fit_items_to_edges(items, onset, offset)
-    head_src, tail_src = edge_air(head_air, speed, fps), edge_air(tail_air, speed, fps)
-    pauses, notes = plan_pause_removals(words, duration, min_pause, target_gap, head_src, tail_src, quiet, edges_quiet)
+    pauses, notes = plan_pause_removals(words, duration, min_pause, target_gap, head_src, tail_src, quiet)
     drops = plan_drop_removals(items, drop, duration, target_gap, quiet, head_src, tail_src) if drop else []
     # A drop already sets the air on both sides of its cut; a pause cut that touches it would eat that air.
     pauses = [p for p in pauses if not any(p.start < d.end + 1e-6 and d.start < p.end + 1e-6 for d in drops)]
@@ -783,8 +796,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--speed", type=float, default=1.0, help="speed-up factor 0.5-2.0 applied after the cut (default 1.0)")
     parser.add_argument("--min-pause", type=float, default=DEFAULT_MIN_PAUSE, help=f"trim pauses from this length, s (default {DEFAULT_MIN_PAUSE})")
     parser.add_argument("--target-gap", type=float, default=DEFAULT_TARGET_GAP, help=f"gap left after trimming, s (default {DEFAULT_TARGET_GAP})")
-    parser.add_argument("--head-air", type=float, default=DEFAULT_HEAD_AIR, help=f"non-speech kept before the first sound of speech, output s; with the frame grid never over {EDGE_LIMIT:g} s (default {DEFAULT_HEAD_AIR})")
-    parser.add_argument("--tail-air", type=float, default=DEFAULT_TAIL_AIR, help=f"non-speech kept after the last sound of speech, output s; with the frame grid never over {EDGE_LIMIT:g} s (default {DEFAULT_TAIL_AIR})")
+    parser.add_argument("--head-air", type=float, default=DEFAULT_HEAD_AIR, help=f"pad before the first word, output s; with the frame grid never over {EDGE_LIMIT:g} s (default {DEFAULT_HEAD_AIR})")
+    parser.add_argument("--tail-air", type=float, default=DEFAULT_TAIL_AIR, help=f"pad after the last word, output s; with the frame grid never over {EDGE_LIMIT:g} s (default {DEFAULT_TAIL_AIR})")
     parser.add_argument("--source", type=Path, help="video for the quiet-sound check (default: the one in words.json)")
     parser.add_argument("--no-energy", action="store_true", help="trust the word times, skip the quiet-sound check")
     parser.add_argument("--out", type=Path, default=Path("cut-plan.json"), help="plan file (default ./cut-plan.json)")
@@ -807,15 +820,13 @@ def main(argv: list[str] | None = None) -> int:
         else:
             items = [p.to_dict() for p in build_phrases(words, PHRASE_MIN_PAUSE, DEFAULT_MIN_PHRASE)]
         quiet: list[Span] | None = None
-        edge_quiet: list[Span] | None = None
         if not args.no_energy:
             source = args.source or (Path(wf.source) if wf.source else None)
             if source is None or not source.is_file():
                 raise PlanError("The video for the quiet-sound check is not found: pass --source, or --no-energy to trust the word times")
-            sound = analyse_audio(source)
-            quiet, edge_quiet = sound.quiet, sound.edge_quiet
+            quiet = analyse_audio(source).quiet
         plan = make_plan(words, wf.duration, items, parse_drop_list(args.drop), args.speed, args.min_pause,
-                         args.target_gap, args.head_air, args.tail_air, quiet, edge_quiet)
+                         args.target_gap, args.head_air, args.tail_air, quiet)
         write_json(args.out, plan)
         report = format_report(plan)
         args.report.parent.mkdir(parents=True, exist_ok=True)
