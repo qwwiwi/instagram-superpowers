@@ -29,11 +29,12 @@ def test_check_source_guards(tmp_path: Path) -> None:
 
 def test_plan_calls_order_and_payloads() -> None:
     calls = plan_calls(Path("/Users/someone/Movies/r/reel.mp4"), " Мой рилс ", "p-1")
-    assert [tool for tool, _ in calls] == ["renameProject", "setProjectDynamicRange", "setCanvas", "importMedia"]
+    assert [tool for tool, _ in calls] == ["renameProject", "setProjectDynamicRange", "setAspectRatio", "setCanvas", "importMedia"]
     assert calls[0][1] == {"id": "p-1", "name": "Мой рилс"}
     assert calls[1][1] == {"range": "sdr"}
-    assert calls[2][1] == {"aspect": "9:16", "frameRate": 30}
-    assert calls[3][1] == {"path": "/Users/someone/Movies/r/reel.mp4"}
+    assert calls[2][1] == {"ratio": "9:16"}
+    assert calls[3][1] == {"frameRate": 30}
+    assert calls[4][1] == {"path": "/Users/someone/Movies/r/reel.mp4"}
     with pytest.raises(ValueError):
         plan_calls(Path("/x.mp4"), "  ")
 
@@ -79,7 +80,8 @@ def test_main_run_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, clip_en
     monkeypatch.setattr(import_reel, "EditsClient", lambda: fake)
     assert import_reel.main([str(reel), "--expect-duration", "20"]) == code
     tools = [tool for tool, _ in fake.calls]
-    assert tools == ["newProject", "renameProject", "setProjectDynamicRange", "setCanvas", "importMedia", "clips"]
+    assert tools == ["newProject", "renameProject", "setProjectDynamicRange", "setAspectRatio", "setCanvas",
+                     "importMedia", "clips"]
     assert fake.calls[1][1]["id"] == "p-9"
     assert not {"deleteProject", "closeProject", "openProject"} & set(tools)
 

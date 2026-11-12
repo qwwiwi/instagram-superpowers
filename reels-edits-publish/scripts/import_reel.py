@@ -2,7 +2,8 @@
 """Import a finished reel into Edits as a new project and check the timeline length.
 
 Calls, in this order: ``health`` -> ``newProject`` -> ``renameProject`` ->
-``setProjectDynamicRange`` (sdr) -> ``setCanvas`` (9:16, 30 fps) -> ``importMedia``
+``setProjectDynamicRange`` (sdr) -> ``setAspectRatio`` (9:16) -> ``setCanvas``
+(30 fps) -> ``importMedia``
 -> ``clips``. A new project starts in HDR at 60 fps, so the SDR and 30 fps calls
 come before the import. Nothing is cut, deleted or published; no other project is
 opened, closed or touched.
@@ -84,7 +85,8 @@ def plan_calls(path: Path, project_name: str, project_id: str = ID_PLACEHOLDER) 
     return [
         ("renameProject", {"id": project_id, "name": name}),
         ("setProjectDynamicRange", {"range": "sdr"}),
-        ("setCanvas", {"aspect": "9:16", "frameRate": FRAME_RATE}),
+        ("setAspectRatio", {"ratio": "9:16"}),
+        ("setCanvas", {"frameRate": FRAME_RATE}),
         ("importMedia", {"path": str(path)}),
     ]
 
