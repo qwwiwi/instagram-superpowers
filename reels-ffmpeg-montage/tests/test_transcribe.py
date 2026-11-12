@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import logging
+import traceback
 import urllib.error
 from email.message import Message
 from pathlib import Path
@@ -23,7 +25,8 @@ from transcribe import (
     words_from_response,
 )
 
-SECRET = "gsk_TESTKEY_do_not_leak_0123456789"
+# Assembled at run time so that no literal provider-prefixed key sits in the source.
+SECRET = "gsk_" + "TEST" * 6 + "0123456789"
 
 GOOD_ANSWER = {
     "text": "привет мир",
@@ -38,10 +41,13 @@ GOOD_ANSWER = {
 
 
 class FakeResponse:
-    def __init__(self, payload: bytes) -> None:
+    def __init__(self, payload: bytes, read_error: Exception | None = None) -> None:
         self._payload = payload
+        self._read_error = read_error
 
     def read(self) -> bytes:
+        if self._read_error:
+            raise self._read_error
         return self._payload
 
     def __enter__(self) -> "FakeResponse":
@@ -228,3 +234,68 @@ def test_multipart_body_layout() -> None:
 def test_module_has_no_print_of_the_key() -> None:
     source = Path(transcribe.__file__).read_text(encoding="utf-8")
     assert "print(key" not in source and "LOG.info(key" not in source
+
+
+# --- key format and broken answers ----------------------------------------------------------------------
+
+
+def _urlopen_like_http_client(request: Any, timeout: float | None = None) -> FakeResponse:
+    """Behave like http.client: a header value with a line break raises a ValueError that quotes the value."""
+    for _, value in request.header_items():
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"Invalid header value {value!r}")
+    return FakeResponse(json.dumps(GOOD_ANSWER).encode("utf-8"))
+
+
+@pytest.mark.parametrize("bad", [
+    SECRET[:10] + "\n" + SECRET[10:],
+    SECRET[:10] + " " + SECRET[10:],
+    SECRET[:8] + "\x00" + SECRET[8:],
+    SECRET + "\r\n" + "second line",
+    SECRET[:5] + "ж" + SECRET[5:],
+])
+def test_key_with_inner_whitespace_or_control_chars_is_refused_safely(
+        audio: Path, bad: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(MontageError) as info:
+        GroqClient(bad, _urlopen_like_http_client).transcribe(audio, "audio/flac")
+    shown = str(info.value) + repr(info.value) + "".join(traceback.format_exception(info.value))
+    captured = capsys.readouterr()
+    for part in (SECRET[:6], SECRET[10:16], SECRET[-8:]):
+        assert part not in shown and part not in captured.out and part not in captured.err
+    assert "GROQ_API_KEY" in str(info.value)
+
+
+def test_load_api_key_refuses_a_key_with_a_line_break_without_echoing_it(tmp_path: Path) -> None:
+    broken = SECRET[:12] + "\n" + SECRET[12:]
+    with pytest.raises(MontageError) as info:
+        load_api_key({"GROQ_API_KEY": broken}, tmp_path / "none")
+    assert SECRET[:12] not in str(info.value) and SECRET[12:] not in str(info.value)
+
+
+@pytest.mark.parametrize("raw", [f" {SECRET}\n", f'"{SECRET}"', f"'{SECRET}'", f'  "{SECRET}"  '])
+def test_key_surrounding_whitespace_and_quotes_are_stripped(raw: str) -> None:
+    assert load_api_key({"GROQ_API_KEY": raw}, Path("/nonexistent")) == SECRET
+
+
+def test_value_error_from_the_http_layer_never_shows_the_key(audio: Path) -> None:
+    def failing(request: Any, timeout: float | None = None) -> FakeResponse:
+        raise ValueError(f"Invalid header value {SECRET!r}")
+
+    with pytest.raises(GroqError) as info:
+        GroqClient(SECRET, failing).transcribe(audio, "audio/flac")
+    assert SECRET not in str(info.value) + "".join(traceback.format_exception(info.value))
+
+
+@pytest.mark.parametrize("error", [
+    http.client.IncompleteRead(b"par", 100),
+    ConnectionResetError("reset"),
+    OSError("broken pipe"),
+    http.client.HTTPException("bad status line"),
+])
+def test_truncated_or_broken_response_becomes_a_groq_error(audio: Path, error: Exception) -> None:
+    def opener(request: Any, timeout: float | None = None) -> FakeResponse:
+        return FakeResponse(b"", read_error=error)
+
+    with pytest.raises(GroqError) as info:
+        GroqClient(SECRET, opener).transcribe(audio, "audio/flac")
+    assert "try again" in str(info.value).lower()

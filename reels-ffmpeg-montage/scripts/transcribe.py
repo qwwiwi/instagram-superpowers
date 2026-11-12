@@ -21,6 +21,7 @@ chunks: a reel is short.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import logging
 import os
@@ -83,6 +84,34 @@ def _read_env_file(path: Path) -> str | None:
     return value
 
 
+def clean_key(raw: str) -> str:
+    """Normalise a key and check that it can travel in an HTTP header.
+
+    Surrounding whitespace and one pair of quotes are removed. What is left must be
+    printable ASCII without any whitespace: a line break or a space inside the key
+    means a broken copy, and an HTTP library would quote the whole key in its error.
+
+    Args:
+        raw: The value as found in the environment or the env file.
+
+    Returns:
+        The key.
+
+    Raises:
+        MontageError: The key has an inner space, line break, control or non-ASCII character.
+            The message never contains the key.
+    """
+    value = raw.strip()
+    while len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    if not value or any(not ch.isascii() or not ch.isprintable() or ch.isspace() for ch in value):
+        raise MontageError(
+            f"{KEY_ENV} is not a valid key: it must be one line of plain characters with no spaces, line breaks "
+            "or non-ASCII letters (the value is not shown). Copy the key from the Groq console again."
+        )
+    return value
+
+
 def load_api_key(environ: Mapping[str, str] | None = None, key_file: Path | None = None) -> str:
     """Find the Groq key: the environment first, then the env file.
 
@@ -99,11 +128,11 @@ def load_api_key(environ: Mapping[str, str] | None = None, key_file: Path | None
     env = os.environ if environ is None else environ
     value = (env.get(KEY_ENV) or "").strip()
     if value:
-        return value
+        return clean_key(value)
     path = (key_file or KEY_FILE).expanduser()
     from_file = _read_env_file(path)
     if from_file:
-        return from_file
+        return clean_key(from_file)
     raise MontageError(
         f"No Groq key. Set the environment variable {KEY_ENV}, or put the line "
         f"`export {KEY_ENV}=\"<your key>\"` into {KEY_FILE} (chmod 600). "
@@ -215,7 +244,7 @@ class GroqClient:
     """
 
     def __init__(self, key: str, opener: Opener | None = None, url: str = API_URL) -> None:
-        self._key = key
+        self._key = clean_key(key)
         self._opener = opener or urllib.request.urlopen
         self._url = url
 
@@ -243,13 +272,25 @@ class GroqClient:
             with self._opener(request, timeout=HTTP_TIMEOUT) as response:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
-            detail = _error_text(exc.read() if exc.fp else b"", self._key)
+            try:
+                error_body = exc.read() if exc.fp else b""
+            except (http.client.HTTPException, OSError):
+                error_body = b""
+            detail = _error_text(error_body, self._key)
             retry = exc.headers.get("Retry-After") if exc.headers else None
             raise GroqError(explain_http_error(exc.code, detail, retry)) from None
         except urllib.error.URLError as exc:
             raise GroqError(f"Cannot reach Groq: {redact(str(exc.reason), self._key)}") from None
         except TimeoutError:
             raise GroqError("Groq did not answer in time; try again") from None
+        except (http.client.HTTPException, OSError):
+            # A cut-off or reset answer (IncompleteRead, connection reset): nothing to show but the advice.
+            raise GroqError("The answer from Groq was cut off or the connection broke; try again "
+                            "(if it keeps happening, check the network and the size of the audio)") from None
+        except ValueError:
+            # http.client puts the rejected header value into this message, and the value holds the key.
+            raise GroqError(f"The request was refused before it was sent; check that {KEY_ENV} is a single line "
+                            "with no spaces") from None
         try:
             data = json.loads(raw.decode("utf-8"))
         except ValueError:
