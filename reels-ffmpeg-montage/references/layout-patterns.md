@@ -139,7 +139,7 @@ build/
   .bg-dark .card { box-shadow: 0 8px 0 #000; }
   .card-dark { background: var(--card-dark); border-color: #3A414C; box-shadow: 0 8px 0 #000; color: var(--ink-on-dark);
                font-family: "Mono", monospace; }
-  .card h3 { font: 600 44px "Ui", sans-serif; }
+  .card h3 { font: 600 44px "Ui", sans-serif; }   /* card header, rule 8.2: 40-48 px (a scene title above the card is 56-80 px) */
   .row { height: 112px; margin-top: 20px; border-radius: 16px; background: #EEF1F4;
          display: flex; align-items: center; gap: 24px; padding: 0 28px; font: 500 36px "Ui", sans-serif; }
   .mono { font: 500 44px "Mono", monospace; }
