@@ -170,8 +170,8 @@ build/
   <div id="sc-1" class="clip scene-split bg-dark" data-start="0" data-duration="3">
     <div class="card" style="left:120px; top:140px; width:840px; height:602px">
       <h3>ЗАГОЛОВОК КАРТОЧКИ</h3>
-      <div class="row" id="sc1-r1">Первая строка</div>
-      <div class="row" id="sc1-r2" style="opacity:0">Вторая строка</div>
+      <div class="row" id="sc1-row1">Первая строка</div>
+      <div class="row" id="sc1-row2" style="opacity:0">Вторая строка</div>
     </div>
   </div>
 
@@ -195,7 +195,7 @@ build/
   word("#w2", 0.62);
   word("#w3", 0.9);
   // Scene states (rule 2.5): a row slides in on its word.
-  tl.fromTo("#sc1-r2", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 0.5);
+  tl.fromTo("#sc1-row2", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 0.5);
   window.__timelines = window.__timelines || {};
   window.__timelines["main"] = tl;
 </script>

@@ -290,7 +290,7 @@ y 140–750; в ВИЗУАЛЕ всё увеличивается до полос
 |---|---|
 | Широкий «техно» гротеск | Unbounded, Russo One, Exo 2 |
 | Нейтральный гротеск | Inter, Manrope, Onest |
-| Моноширинный | IBM Plex Mono, Fira Mono, JetBrains Mono |
+| Моноширинный | IBM Plex Mono, Fira Mono, Source Code Pro |
 | Пиксельный (по желанию для чисел) | Press Start 2P, Pixelify Sans |
 | Узкий жирный гротеск (только для приёма 11.7) | Oswald, Roboto Condensed |
 
