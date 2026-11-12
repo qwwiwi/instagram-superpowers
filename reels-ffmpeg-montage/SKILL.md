@@ -37,7 +37,7 @@ description: >
 | ffmpeg и ffprobe | `ffmpeg -version`, `ffprobe -version` | поставить ffmpeg |
 | Субтитры: libass **или** Pillow | `ffmpeg -hide_banner -filters \| grep -E ' (ass\|subtitles) '` – есть строка: libass есть, ничего ставить не нужно. Нет строки (так у стандартной формулы Homebrew `ffmpeg`): нужен Pillow, `python3 -c "import PIL"` | ставить Pillow, см. ниже. Пересобирать ffmpeg не нужно |
 | Python 3.10+ | `python3 --version` | поставить Python |
-| Аккаунт Groq и ключ | переменная `GROQ_API_KEY` задана, либо есть файл `~/.secrets/groq/env` | завести аккаунт в Groq, ключ создаётся в консоли Groq. Показывается при создании, сохраните сразу |
+| Распознавание: ключ Groq или локальный Whisper | ключ: переменная `GROQ_API_KEY` задана, либо есть файл `~/.secrets/groq/env`. Локальный Whisper: `python3 -c "import faster_whisper"` (или `.venv/bin/python -c ...`) проходит без ошибки | нужен один из двух. Groq: завести аккаунт, ключ создаётся в консоли Groq, показывается при создании – сохраните сразу. Локально: поставить `faster-whisper`, см. шаг 1 |
 
 Ключ кладите в окружение или в файл `~/.secrets/groq/env` (права `chmod 600`):
 
@@ -94,11 +94,36 @@ mkdir -p reel-work && cd reel-work     # рабочая папка: сюда л�
 python3 $S/transcribe.py ../take.mp4 --language ru --out words.json
 ```
 
-ffmpeg достаёт моно-звук 16 кГц (FLAC), звук уходит в Groq (`whisper-large-v3`, слова
-с таймкодами), результат – `words.json`. Язык – код ISO-639-1 (`ru`, `en`); без
+Движок распознавания выбирает `--engine`:
+
+- `auto` (по умолчанию) – Groq, если ключ найден; иначе локальный Whisper, если пакет
+  `faster-whisper` установлен; иначе скрипт останавливается и называет оба способа.
+- `groq` – быстро, нужен ключ, звук дубля уходит в Groq.
+- `local` – ключ не нужен, звук не покидает компьютер, но медленнее: на процессоре заметно
+  дольше. Первый запуск скачивает модель: `large-v3-turbo` (по умолчанию) – около 1,6 ГБ,
+  `--model small` – около 0,5 ГБ, легче и быстрее, но точность ниже.
+
+```bash
+python3 $S/transcribe.py ../take.mp4 --engine groq --language ru --out words.json
+.venv/bin/python $S/transcribe.py ../take.mp4 --engine local --language ru --out words.json
+```
+
+Локальный движок ставится в виртуальное окружение, и скрипт запускается его Python:
+
+```bash
+python3 -m venv .venv && .venv/bin/python -m pip install faster-whisper
+```
+
+Для `local` есть ещё `--device` (`cpu` по умолчанию, `cuda` для видеокарты NVIDIA),
+`--compute-type` (`int8` по умолчанию) и `--model-dir` (куда класть модель; по умолчанию
+кеш Hugging Face, его место задаёт `HF_HOME`).
+
+ffmpeg достаёт моно-звук 16 кГц: для Groq – FLAC, звук уходит в Groq (`whisper-large-v3`,
+слова с таймкодами); для `local` – WAV, распознаёт `faster-whisper` на этом компьютере.
+Результат у обоих один и тот же – `words.json`. Язык – код ISO-639-1 (`ru`, `en`); без
 `--language` язык определяется сам.
 
-Лимит размера файла: если FLAC больше `--max-upload-mb` (по умолчанию 25), скрипт
+Лимит размера файла (только Groq): если FLAC больше `--max-upload-mb` (по умолчанию 25), скрипт
 пересжимает звук в MP3 32 кбит/с; если и так больше – останавливается с понятным
 текстом. Нарезать длинный дубль на куски он не умеет: рилс короткий.
 
@@ -302,8 +327,11 @@ python3 $S/captions.py reel-cut.mp4 words-cut.json --out reel-captioned.mp4   # 
   поправить вручную, см. `references/formats.md`) или переснять.
 - **Таймкоды слов приблизительные.** Поэтому резы подстраиваются под тишину по звуку, а
   кадры стыков нужно смотреть глазами.
-- **Один запрос в Groq на весь звук, без нарезки на куски.** Лимит размера файла зависит от
-  аккаунта: см. `--max-upload-mb`.
+- **Движок `groq`: один запрос в Groq на весь звук, без нарезки на куски.** Лимит размера
+  файла зависит от аккаунта: см. `--max-upload-mb`. У движка `local` лимита нет, но на
+  процессоре он заметно медленнее, а первый запуск скачивает модель.
+- **Локальный движок проверен только тестами с подменённой моделью.** Настоящий
+  `faster-whisper` в тестах не запускается и модель не скачивается.
 - **Лимит длительности рилса** задаётся параметром `--max-duration`, а не зашит: проверьте
   актуальное значение у Instagram.
 - **Субтитры: два способа, у каждого своя цена.** `ass` требует ffmpeg с libass (стандартная
@@ -319,7 +347,7 @@ python3 $S/captions.py reel-cut.mp4 words-cut.json --out reel-captioned.mp4   # 
 
 ## Файлы
 
-- `scripts/transcribe.py` – звук, Groq, `words.json`
+- `scripts/transcribe.py` – звук, распознавание (Groq или локальный Whisper через `faster-whisper`, `--engine`), `words.json`
 - `scripts/phrases.py` – таблица фраз
 - `scripts/plan_cut.py` – план нарезки, кандидаты, подтверждённые вырезания
 - `scripts/render_cut.py` – рендер, `words-cut.json`, `cut-map.json`
