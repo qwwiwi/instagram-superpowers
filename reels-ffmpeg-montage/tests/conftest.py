@@ -12,7 +12,7 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from common import Word  # noqa: E402
+from common import Word, WordsFile, load_words  # noqa: E402
 
 HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 NEED_FFMPEG = pytest.mark.skipif(not HAVE_FFMPEG, reason="ffmpeg/ffprobe not installed")
@@ -27,6 +27,13 @@ PHRASE_SPEC: list[tuple[str, float]] = [
     ("и это всё", 10.2),
 ]
 CLIP_DURATION = 13.0
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def real_take() -> WordsFile:
+    """Words of a real 62.5 s Russian take as Groq returned them (154 words, drifting times)."""
+    return load_words(FIXTURES / "real_take_words.json")
 
 
 def fake_words() -> list[Word]:

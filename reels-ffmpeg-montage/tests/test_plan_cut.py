@@ -195,12 +195,15 @@ def test_validate_keep_rejects_overlap_and_empty() -> None:
         validate_keep([(0.0, 5.0)], 3.0)
 
 
-def test_cut_into_a_kept_phrase_is_refused() -> None:
-    # Recogniser says the phrase 1 ends at 1.0 s but the pause starts at 0.9 s according to bad word times:
+def test_pause_cut_that_would_touch_a_kept_phrase_is_shortened() -> None:
+    # The phrase table says phrase 1 runs to 2.0 s; the word list has a gap from 1.0 s on. The pause cut shrinks
+    # to start after the phrase instead of the plan being refused.
     words = [Word("раз", 0.2, 1.0), Word("два", 3.0, 3.4)]
     items = [{"id": 1, "core_start": 0.2, "core_end": 2.0, "text": "раз"}, {"id": 2, "core_start": 3.0, "core_end": 3.4, "text": "два"}]
-    with pytest.raises(PlanError, match="eat speech"):
-        make_plan(words, 4.0, items, drop=[])
+    plan = make_plan(words, 4.0, items, drop=[])
+    pause = [r for r in plan["removals"] if r["kind"] == "pause"]
+    assert len(pause) == 1 and pause[0]["start"] == pytest.approx(2.0)
+    assert any("shortened" in n for n in plan["notes"])
 
 
 # --- energy helpers ---------------------------------------------------------------------------------------------------

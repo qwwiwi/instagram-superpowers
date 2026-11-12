@@ -328,22 +328,91 @@ def keep_from_removals(removals: list[Removal], duration: float) -> list[tuple[f
     return [(a, b) for a, b in keep if b - a >= MIN_KEEP]
 
 
-def check_collateral(items: list[dict[str, Any]], drop: list[int], removals: list[Removal]) -> list[tuple[int, float]]:
-    """Kept phrases whose speech the removals cut into.
+def speech_spans(item: dict[str, Any]) -> list[Span]:
+    """Stretches of a phrase where something is said.
+
+    The silence between the words of a phrase is not speech: a pause inside a
+    phrase is trimmed on purpose. Without a word list the whole core counts.
+    """
+    spans: list[Span] = []
+    for word in item.get("words") or []:
+        if isinstance(word, dict) and isinstance(word.get("start"), (int, float)) and isinstance(word.get("end"), (int, float)):
+            spans.append(Span(float(word["start"]), float(word["end"])))
+    return spans or [Span(float(item["core_start"]), float(item["core_end"]))]
+
+
+def shrink_to_silence(
+    removals: list[Removal], items: list[dict[str, Any]], drop: list[int], notes: list[str]
+) -> list[Removal]:
+    """Cut the automatic removals (pauses, head, tail) back so they never touch kept speech.
+
+    Pause cuts sit between two words by construction, so this changes nothing for
+    a consistent phrase table. When the table says there is speech where a pause
+    cut was planned (an edited ``phrases.json``), the cut is made shorter instead
+    of the whole plan being refused.
+
+    Args:
+        removals: Removals of kind head, pause and tail.
+        items: Phrase entries.
+        drop: Phrase numbers that go; their speech may be cut.
+        notes: Receives one line per shortened cut.
 
     Returns:
-        ``(phrase id, seconds of its speech inside the removals)`` over the tolerance.
+        The removals, possibly shortened or split; pieces under ``MIN_CUT`` are gone.
     """
-    hits: list[tuple[int, float]] = []
+    speech = sorted(
+        (s for item in items if int(item["id"]) not in drop for s in speech_spans(item)), key=lambda s: s.start
+    )
+    out: list[Removal] = []
+    for removal in removals:
+        pieces = [Span(removal.start, removal.end)]
+        for s in speech:
+            pieces = [q for p in pieces for q in (
+                [p] if s.end <= p.start or s.start >= p.end
+                else [x for x in (Span(p.start, s.start), Span(s.end, p.end)) if x.length > EPS]
+            )]
+        pieces = [p for p in pieces if p.length >= MIN_CUT]
+        if len(pieces) != 1 or abs(pieces[0].length - (removal.end - removal.start)) > 1e-6:
+            notes.append(f"{removal.kind} cut {removal.start:.2f}-{removal.end:.2f} s shortened: the phrase table has speech there")
+        out += [Removal(p.start, p.end, removal.kind, list(removal.phrases), removal.note) for p in pieces]
+    return out
+
+
+def check_collateral(items: list[dict[str, Any]], drop: list[int], removals: list[Removal]) -> list[tuple[int, float, Removal]]:
+    """Kept phrases whose speech the removals cut into.
+
+    Only the words count, not the pauses between them.
+
+    Returns:
+        ``(phrase id, seconds of its speech inside the removal, the removal)`` over the tolerance.
+    """
+    hits: list[tuple[int, float, Removal]] = []
     for item in items:
         no = int(item["id"])
         if no in drop:
             continue
-        start, end = float(item["core_start"]), float(item["core_end"])
-        taken = sum(max(0.0, min(end, r.end) - max(start, r.start)) for r in removals)
-        if taken > COLLATERAL_TOLERANCE:
-            hits.append((no, taken))
+        spans = speech_spans(item)
+        for removal in removals:
+            taken = sum(max(0.0, min(s.end, removal.end) - max(s.start, removal.start)) for s in spans)
+            if taken > COLLATERAL_TOLERANCE:
+                hits.append((no, taken, removal))
     return hits
+
+
+def collateral_message(hits: list[tuple[int, float, Removal]], items: list[dict[str, Any]]) -> str:
+    """Explain a refused plan: which phrase loses speech, to which cut, and what to do."""
+    by_id = {int(i["id"]): str(i["text"]) for i in items}
+    lines = []
+    for no, sec, removal in hits:
+        text = by_id[no]
+        short = text if len(text) <= 50 else text[:47] + "..."
+        cause = f"the drop of phrase(s) {removal.phrases}" if removal.phrases else f"the {removal.kind} cut"
+        lines.append(f"phrase {no} («{short}») loses {sec:.2f} s of speech to {cause} at {removal.start:.2f}-{removal.end:.2f} s")
+    return (
+        "The plan would cut into speech that is kept: " + "; ".join(lines) + ". "
+        "Nothing is written. Fix: take that phrase out of --drop or add the neighbouring phrase to it "
+        "(the boundary between them is not silent), or rebuild phrases.json from the current words.json."
+    )
 
 
 def validate_keep(keep: list[tuple[float, float]], duration: float) -> None:
@@ -451,11 +520,11 @@ def make_plan(
     drops = plan_drop_removals(items, drop, duration, target_gap, quiet, head_air, tail_air) if drop else []
     # A drop already sets the air on both sides of its cut; a pause cut that touches it would eat that air.
     pauses = [p for p in pauses if not any(p.start < d.end + 1e-6 and d.start < p.end + 1e-6 for d in drops)]
+    pauses = shrink_to_silence(pauses, items, drop, notes)
     removals = merge_removals(pauses + drops)
     hits = check_collateral(items, drop, removals)
     if hits:
-        detail = ", ".join(f"phrase {no}: {sec:.2f} s" for no, sec in hits)
-        raise PlanError(f"The cut would eat speech of kept phrases ({detail}). Check the word times; the plan is not written.")
+        raise PlanError(collateral_message(hits, items))
     keep = keep_from_removals(removals, duration)
     validate_keep(keep, duration)
     kept = sum(b - a for a, b in keep)
