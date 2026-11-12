@@ -5,10 +5,9 @@ Recogniser word times drift, so a pause is trusted only where the sound
 energy is low too. The silence threshold follows the speech level, not the
 room noise: ``clamp(p75 - 6.5 dB, -46, -30)`` of the loudness envelope.
 
-The edges of speech (first and last sound of the reel) use a second, lower threshold that follows the
-room noise instead: ``clamp(p10 + 10 dB, -70, pause threshold)``. Quiet phonemes (a soft consonant at
-the start of the first word, a fading ending of the last one) are well above the room noise but below
-the pause threshold; with the pause threshold they would be cut off.
+The edges of the reel are NOT cut by energy: they come from the word stamps with a safety pad
+(``plan_cut.cut_edges``). The quiet spans only tell where speech energy runs on outside the padded
+words, so an edge can move outward (keep more sound), never inward.
 """
 
 from __future__ import annotations
@@ -35,10 +34,6 @@ FLOOR_MAX_DB = -30.0
 SILENT_DB = -120.0
 # A quiet stretch shorter than this is a gap between sounds, not a pause.
 MIN_QUIET = 0.1
-# Edges of speech: anything this far above the room noise is sound (a quiet phoneme counts).
-EDGE_MARGIN_DB = 10.0
-EDGE_MIN_DB = -70.0
-NOISE_PERCENTILE = 0.10
 
 
 @dataclass(frozen=True)
@@ -122,46 +117,25 @@ def quiet_spans(envelope_db: list[float], threshold_db: float, min_len: float = 
     return [s for s in spans if s.length >= min_len]
 
 
-def edge_threshold(envelope_db: list[float], pause_threshold: float) -> float:
-    """Threshold for the edges of speech: a little above the room noise, never above the pause threshold.
-
-    Args:
-        envelope_db: Loudness of consecutive windows in dB.
-        pause_threshold: Result of :func:`percentile_threshold` for the same envelope.
-
-    Raises:
-        ValueError: The envelope is empty.
-    """
-    if not envelope_db:
-        raise ValueError("The loudness envelope is empty, there is no sound to measure")
-    ordered = sorted(envelope_db)
-    noise = ordered[min(len(ordered) - 1, int(NOISE_PERCENTILE * len(ordered)))]
-    return max(EDGE_MIN_DB, min(pause_threshold, noise + EDGE_MARGIN_DB))
-
-
 @dataclass(frozen=True)
 class SoundMap:
-    """Quiet spans of an audio track for pauses and for the edges of speech."""
+    """Quiet spans of an audio track."""
 
     quiet: list[Span]
     threshold: float
-    edge_quiet: list[Span]
-    edge_threshold: float
-    # Length of the decoded audio, seconds; the video may be longer.
+    # Length of the decoded audio, seconds (gaps in the timestamps filled with silence).
     audio_duration: float
 
 
 def analyse_pcm(raw: bytes, rate: int = ENV_RATE) -> SoundMap:
-    """Quiet spans of raw signed 16-bit mono PCM, for pauses and for the edges of speech.
+    """Quiet spans of raw signed 16-bit mono PCM.
 
     Raises:
         ValueError: There is no sound to measure.
     """
     envelope = envelope_from_pcm(raw, rate)
     threshold = percentile_threshold(envelope)
-    edge = edge_threshold(envelope, threshold)
-    return SoundMap(quiet_spans(envelope, threshold), threshold, quiet_spans(envelope, edge), edge,
-                    (len(raw) // 2) / rate)
+    return SoundMap(quiet_spans(envelope, threshold), threshold, (len(raw) // 2) / rate)
 
 
 def analyse_audio(source: Path) -> SoundMap:
@@ -171,9 +145,10 @@ def analyse_audio(source: Path) -> SoundMap:
         MontageError: ffmpeg is missing, cannot decode the file, or there is no sound.
     """
     require_tool("ffmpeg")
+    # aresample=async fills gaps in the audio timestamps with silence, so the spans stay on the file clock.
     done = subprocess.run(
-        ["ffmpeg", "-v", "error", "-nostdin", "-i", str(source), "-vn", "-f", "s16le", "-ac", "1",
-         "-ar", str(ENV_RATE), "-"],
+        ["ffmpeg", "-v", "error", "-nostdin", "-i", str(source), "-vn", "-af", "aresample=async=1:first_pts=0",
+         "-f", "s16le", "-ac", "1", "-ar", str(ENV_RATE), "-"],
         capture_output=True, check=False,
     )
     if done.returncode != 0:
@@ -182,8 +157,7 @@ def analyse_audio(source: Path) -> SoundMap:
         sound = analyse_pcm(done.stdout)
     except ValueError as exc:
         raise MontageError(f"{source}: {exc}") from exc
-    LOG.info("silence threshold %.1f dB (from the speech level), speech-edge threshold %.1f dB (from the room noise)",
-             sound.threshold, sound.edge_threshold)
+    LOG.info("silence threshold %.1f dB (from the speech level)", sound.threshold)
     return sound
 
 

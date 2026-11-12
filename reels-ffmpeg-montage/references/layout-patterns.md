@@ -3,7 +3,8 @@
 Готовые раскладки, чтобы геометрию не придумывать заново. Все числа – из
 `montage-reglament.md` (кадр 1080 × 1920, 30 к/с). Тексты в примерах условные (общий
 инструмент командной строки, файлы `README.md`, `config.yaml`): в ролике на экране только
-слова речи студента и настоящие метки инструмента, о котором речь (правила 4.2, 13.3).
+слова речи студента и нейтральный хром интерфейса – кнопки окна, знак приглашения, курсор,
+значки, служебные надписи; команды и имена файлов – только сказанные (единое правило 4.2).
 
 Каждая сцена в скелетах уже детализирована по разделу 13 регламента: фон с фактурой,
 карточка с рамкой и жёсткой тенью, хром своего типа, строки «значок + жирное название +
@@ -31,13 +32,13 @@
 | Субтитр в СПЛИТЕ | низ блока y 944, строка 80 px (1 строка: y 864–944; 2 строки: y 784–944) |
 | Макет ВИЗУАЛА | x 60–1020, y 140–1280 |
 | Субтитр в ВИЗУАЛЕ | верх блока y 1320, строка 80 px, низ ≤ 1480 |
-| «Два визуала» | верх y 115–820, разделитель y 836–840, низ y 860–1280 |
+| «Два визуала» | верх y 140–820, разделитель y 836–840, низ y 860–1280 |
 | Субтитр СПИКЕРА «грудь» | верх блока y 1180, низ ≤ 1352 (строки плашек с шагом 92 px) |
 | Субтитр СПИКЕРА «над головой» | низ блока = верх волос − 24 (самый высокий верх волос за план); 2 строки плашек – 172 px |
 | Срез спикера в СПЛИТЕ | строки исходника `[y0, y0 + 960]`, `y0` и масштаб по правилу 1.3 (`head_guide.py --top … --chin …`); голова целиком: верх волос y ≥ 1000, рот и подбородок y ≤ 1520; проверка среза – `head_guide.py --top … --chin … --y0 … [--scale …]` (код 1 – FAIL) |
 | Спикер уменьшен (крупный план) | масштаб `s` 0,55–1,0: видео `1080·s × 1920·s`, по центру (`left = 540·(1 − s)`), `top = −y0`; боковые поля – копия того же кадра, размытие ≥ 30 px, яркость −30…−50 % |
-| Заголовок-хук на кадре 0,00 | ≥ 72 px, 2–6 слов, строка над карточкой y 140–330 (1–2 строки); виден и непрозрачен с кадра 0 (правило 3.7) |
-| Не трогать | y 0–115, y 1520–1920, x 950–1080 при y 1080–1720 |
+| Заголовок-хук на кадре 0,00 | ≥ 72 px, 2–6 слов, строка над карточкой y 140–330 (1–2 строки); виден и непрозрачен с кадра 0 (правило 3.7); карточка под ним – не ближе 20 px к низу заголовка (одна строка – с y 260, две – с y 350) |
+| Не трогать | y 0–140 (верхняя служебная зона, одна граница везде), y 1520–1920, x 950–1080 при y 1080–1720 |
 
 ## 2. Путь А: композиция HyperFrames
 
@@ -122,8 +123,8 @@ build/
   /* Speaker half of a split: untimed wrapper that crops the take (rule 1.3: the whole head, hair >= y 1000, mouth and chin <= y 1520). */
   .speaker-half { position: absolute; left: 0; top: 960px; width: 1080px; height: 960px; overflow: hidden; z-index: 1; }
   .speaker-half video { position: absolute; left: 0; width: 1080px; height: 1920px; } /* top: -y0 */
-  /* Close-up scaled to s (0.85-1.0): the speaker is 1080*s x 1920*s, centred; the side gaps show a blurred,
-     darkened copy of the same frame (never a flat bar). */
+  /* Close-up scaled to s (0.55-1.0, rule 1.3; below 0.85 tell the student the take is too close): the speaker is
+     1080*s x 1920*s, centred; the side gaps show a blurred, darkened copy of the same frame (never a flat bar). */
   .speaker-half video.spk-fill { filter: blur(30px) brightness(0.6); }
   .speaker-full { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 1; }
 
@@ -213,7 +214,8 @@ build/
   <video id="spk-2" class="clip speaker-full" src="speaker.mp4" muted playsinline
          data-start="3" data-duration="2.5" data-media-start="3"></video>
 
-  <!-- Plan 1: split scene with the hook title. Frame 0.00: title, header and two real rows already on screen. -->
+  <!-- Plan 1: split scene with the hook title. The title says THREE files, so frame 0.00 shows exactly three rows
+       (rule 14.9): the number is on screen from the first frame; the hook motion is state changes, not new rows. -->
   <div id="sc-1" class="clip scene-split bg-dark" data-start="0" data-duration="3">
     <div class="hook-title">ТРИ ФАЙЛА</div>   <!-- one line: y 150-240; two lines end at y 330, then the card starts at y 350 -->
     <div class="card" id="sc1-card" style="left:120px; top:270px; width:840px; height:472px">
@@ -228,10 +230,9 @@ build/
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>config.yaml</b>
         <span class="state" style="color:var(--muted)">правка<span class="caret" id="sc1-caret"></span></span>
       </div>
-      <!-- Third row: not drawn until its word (rule 4.9). -->
       <div class="row" id="sc1-row3" style="top:340px">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>notes.md</b>
-        <span class="state pill">НОВЫЙ</span>
+        <span class="state pill" id="sc1-st3">НОВЫЙ</span>
       </div>
       <div class="pill edge" id="sc1-badge">3 ФАЙЛА</div>
     </div>
@@ -257,9 +258,10 @@ build/
   word("#w2", 0.62);
   word("#w3", 0.9);
   // Hook title: no tween before frame 0 - it is simply there. An accent may move it only later.
-  // Scene states (rule 2.5): the third row pops in on its word, the badge lands on the card edge.
-  tl.set("#sc1-row3", { opacity: 0, y: 40 }, 0);
-  tl.to("#sc1-row3", { opacity: 1, y: 0, duration: 0.22, ease: "back.out(1.7)" }, 0.5);
+  // Scene states (rule 2.5): all three rows are there on frame 0 (the title says three); the third row's state
+  // pops on its word, the badge lands on the card edge.
+  tl.set("#sc1-st3", { opacity: 0, scale: 0.7 }, 0);
+  tl.to("#sc1-st3", { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2)" }, 0.5);
   tl.set("#sc1-badge", { opacity: 0, scale: 0.7, rotation: -4 }, 0);
   tl.to("#sc1-badge", { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2)" }, 1.2);
   // Micro-motion while held (rule 13.6): caret blinks every 0.5 s, the status pill pulses.
@@ -331,6 +333,7 @@ tl.to("#small-card", { scale: 1 + 0.03 * hold, duration: hold, ease: "none" }, t
 
 // List rows one by one with no pre-drawn slots (rule 4.9): with k of N rows on screen the block stays centred,
 // older rows move apart when the next one arrives. Rows are absolutely positioned at their final places.
+// Rows on a card: the card grows with them, see 2.7 (rule 4.10).
 const STEP = 186, N = 3, rows = ["#c-1", "#c-2", "#c-3"], at = [t, t + 1.1, t + 2.0];
 rows.forEach((id, k) => {
   const y = (N - k - 1) * STEP / 2;
@@ -401,7 +404,10 @@ rows.forEach((id, k) => {
 
 <!-- Comment field with the code word (split, call to action, rules 10.2, 10.7).
      Before the code word: preview of this reel (hook title + like/comment icons), avatar, button.
-     The field appears together with its first letter (pop 0.2 s): no empty field, no hint text (rule 4.9). -->
+     The field appears together with its first letter (pop 0.2 s): no empty field, no hint text (rule 4.9).
+     Geometry inside the split band y 140-750 (measured in a browser): card y 200-742 (+8 px shadow = 750);
+     header 204-288; preview row 312-368; field 396-546; button 582-678. The edge badge is short ("КОД"), so it
+     sits right of the header title and does not touch it (rule 14.4). -->
 <div class="card" style="left:120px; top:200px; width:840px; height:542px">
   <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>Комментарий</div>
   <div style="display:flex; align-items:center; gap:20px; margin-top:24px; font:400 32px 'Ui'">
@@ -419,7 +425,7 @@ rows.forEach((id, k) => {
   </div>
   <div id="send" style="margin:36px 0 0 auto; width:340px; height:96px; border-radius:48px; background:var(--accent);
        color:#fff; font:700 40px 'Ui'; display:flex; align-items:center; justify-content:center">Отправить</div>
-  <div class="pill edge" id="cta-pill">КОДОВОЕ СЛОВО</div>
+  <div class="pill edge" id="cta-pill">КОД</div>
 </div>
 ```
 
@@ -451,6 +457,106 @@ python3 $S/verify.py reel.mp4                        # duration, size, fps, loud
 
 Длина `reel.mp4` равна длине `reel-cut.mp4` (±1 кадр), звук – тот же (рендер его не
 меняет). Рендер долгий (минуты): запускай его на переднем плане, не отрывая от терминала.
+
+### 2.7. Растущая карточка (правило 4.10)
+
+Пункт приходит на своём слове – карточка растёт за 0,30 с, соседи едут вместе с ней, и в
+каждый момент карточка стоит по центру своей зоны. Под будущие пункты ничего не рисуется.
+Высота карточки – единственное анимируемое свойство раскладки (`height`); всё остальное –
+`y`, `scale`, `opacity`. До своего слова новый пункт полностью невидим; на слове он появляется
+вместе с ростом, а не после него: в том же отрезке и с тем же замедлением пункт раскрывается
+от своей строки текста к краям (`clip-path: inset(50% 0 50% 0)` → `inset(0)`), а карточка
+обрезает содержимое (`overflow: hidden`), поэтому пункт не лежит на рамке. Край растущей
+карточки может частично обрезать пункт, но на каждом кадре, где виден фон или контур пункта,
+видна и часть его настоящего текста или значка (они стоят на средней линии ряда): кадров
+только с фоном пузыря или ряда нет (правила 4.9, 4.10). Бейдж на кромке – сосед в общей
+обёртке, он едет с карточкой и не обрезается. Числа детерминированы: ни `Math.random`, ни
+бесконечных повторов.
+
+Числа (СПЛИТ: зона карточки y 140–742, высота зоны 602, тень 8 px до y 750):
+
+| Скелет | Высота карточки H(k), k – пунктов на экране | k = 1 | k = 2 | k = 3 | k = 4 | Верх `140 + (602 − H) / 2` | Полоса над и под (порог < 250) |
+|---|---|---|---|---|---|---|---|
+| Список: шапка 84, ряд 110, зазор 16, первый ряд с 108, низ 28, рамки 2 × 4 | 128 + 126·k | 254 | 380 | 506 | – | 314 / 251 / 188 | 174 / 111 / 48 |
+| Чат: шапка 84, пузырь 88, зазор 16, первый пузырь с 108, низ 24, рамки 2 × 4 | 124 + 104·k | 228 | 332 | 436 | 540 | 327 / 275 / 223 / 171 | 187 / 135 / 83 / 31 |
+
+В ВИЗУАЛЕ зона y 140–1280 (1140 px), порог 300: блок с первым пунктом – не ниже 542 px.
+Для списка это первый ряд × 1,6 (ряд 176, кегль 52, значок 84) вместе с заголовком-героем
+120 px: `4 + 84 + 24 + 120 + 24 + 176 + 28 + 4 = 464` – мало, поэтому под карточкой с
+первого кадра стоит второй элемент фразы (панель 300 px с зазором 40): общий блок 804 px,
+полосы по 168 px. Когда приходит второй ряд, первый уменьшается до 1,0 (`scale`, 0,30 с), а
+блок пересчитывается по той же формуле.
+
+```html
+<!-- Growing list (split). Wrapper moves (y), card grows (height); rows sit at their final tops inside the card. -->
+<div id="gl-wrap" style="position:absolute; left:120px; top:0; width:840px">
+  <div class="card" id="gl-card" style="position:relative; left:0; top:0; width:840px; height:254px; overflow:hidden">
+    <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg></span>ПЛАН</div>
+    <div class="row" id="gl-1" style="top:108px; height:110px"><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>первый пункт</b><span class="state pill">ГОТОВО</span></div>
+    <div class="row" id="gl-2" style="top:234px; height:110px"><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>второй пункт</b><span class="state">ждёт</span></div>
+    <div class="row" id="gl-3" style="top:360px; height:110px"><span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>третий пункт</b><span class="state">ждёт</span></div>
+  </div>
+  <div class="pill edge" id="gl-badge" style="top:-30px">В РАБОТЕ</div>
+</div>
+
+<!-- Growing chat (split): one bubble per spoken line, no typing dots; the card grows with every bubble. -->
+<div id="gc-wrap" style="position:absolute; left:120px; top:0; width:840px">
+  <div class="card" id="gc-card" style="position:relative; left:0; top:0; width:840px; height:228px; overflow:hidden">
+    <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>ЧАТ
+      <span style="margin-left:auto; font:500 28px 'Ui'; color:var(--accent)">в сети</span></div>
+    <div class="bubble me"  id="gc-1" style="top:108px">первая реплика</div>
+    <div class="bubble bot" id="gc-2" style="top:212px">ответ агента</div>
+    <div class="bubble me"  id="gc-3" style="top:316px">вторая реплика</div>
+    <div class="bubble bot" id="gc-4" style="top:420px">готово <span style="color:var(--accent)">✓</span></div>
+  </div>
+</div>
+```
+
+```css
+/* Chat bubbles: one line, 88 px high, 32 px text; "me" on the right in the accent, the agent on the left. */
+.bubble { position: absolute; height: 88px; max-width: 600px; padding: 0 32px; border-radius: 28px;
+          display: flex; align-items: center; font: 500 32px "Ui", sans-serif; white-space: nowrap; }
+.bubble.me  { right: 32px; background: var(--accent); color: #fff; }
+.bubble.bot { left: 32px; background: #EEF1F4; color: var(--ink); border: 3px solid #D9DEE5; }
+```
+
+```js
+// Growing card (rule 4.10). heights[k] = card height with k+1 items; times[k] = start of the item's word.
+// Zone of the split card: top 140, height 602. Every state is centred: y = top + (zone - h) / 2.
+function growCard(wrap, card, heights, times, zoneTop = 140, zoneH = 602, dur = 0.3) {
+  heights.forEach((h, k) => {
+    const y = zoneTop + (zoneH - h) / 2;
+    if (k === 0) { tl.set(card, { height: h }, 0); tl.set(wrap, { y }, 0); return; }
+    tl.to(card, { height: h, duration: dur, ease: "power2.out" }, times[k]);
+    tl.to(wrap, { y, duration: dur, ease: "power2.out" }, times[k]);   // the badge and the rows move with it
+  });
+}
+// Items after the first: wholly invisible until their word, then opened together with the growth (same start,
+// duration and ease) from their text line outwards, so a visible strip of the row always holds part of its text
+// or icon (both sit on the row's middle line). The card edge may still clip the row (overflow: hidden).
+function revealItems(ids, times, dur = 0.3) {
+  ids.forEach((id, k) => {
+    if (k === 0) return;                                             // the first item is there on the cut
+    tl.set(id, { opacity: 0, clipPath: "inset(50% 0% 50% 0%)" }, 0);
+    tl.set(id, { opacity: 1 }, times[k]);
+    tl.to(id, { clipPath: "inset(0% 0% 0% 0%)", duration: dur, ease: "power2.out" }, times[k]);
+  });
+}
+const listAt = [6.00, 7.10, 8.05];                                   // word starts from words-cut.json
+growCard("#gl-wrap", "#gl-card", [254, 380, 506], listAt);
+revealItems(["#gl-1", "#gl-2", "#gl-3"], listAt);
+const chatAt = [12.00, 12.90, 13.70, 14.40];
+growCard("#gc-wrap", "#gc-card", [228, 332, 436, 540], chatAt);
+revealItems(["#gc-1", "#gc-2", "#gc-3", "#gc-4"], chatAt);
+// Micro-motion while held (rule 13.6), finite: the status pill of the first row pulses 3 times.
+tl.to("#gl-1 .pill", { scale: 1.05, duration: 0.5, repeat: 3, yoyo: true, ease: "sine.inOut" }, listAt[0] + 0.3);
+```
+
+Проверка до рендера: снимки на `t − 0,25`, `t`, `t + 0,05`, `t + 0,10`, `t + 0,15`, `t + 0,35`
+вокруг прихода каждого пункта (`hyperframes snapshot build --at …`): до слова пункта не видно
+совсем; на каждом снимке роста, где виден фон или контур нового пункта, видна и часть его
+текста или значка; ни одного пустого ряда, пункт не лежит на рамке или соседе, полосы над и
+под карточкой меньше 250 px.
 
 ## 3. Путь Б: склейка ffmpeg
 

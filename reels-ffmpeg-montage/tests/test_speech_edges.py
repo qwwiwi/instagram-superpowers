@@ -1,5 +1,5 @@
-"""Edges of speech: quiet phonemes stay, a short answer is not lost, the 0.10 s edge limit holds after speed
-and the frame grid, and a missing audio tail counts as silence."""
+"""Edges of speech: the cut follows the word stamps with a pad, the sound energy only widens it, the air limit
+holds after speed and the frame grid, and verify.py reads where the audio ends from its packet timestamps."""
 
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ from pathlib import Path
 import pytest
 
 from audio import ENV_RATE, Span, analyse_pcm
-from common import OUT_FPS, Word, quantize_keep
+from common import OUT_FPS, Word, probe, quantize_keep
 from phrases import build_phrases
-from plan_cut import EDGE_LIMIT, make_plan, speech_edges
+from plan_cut import DEFAULT_HEAD_AIR, DEFAULT_TAIL_AIR, EDGE_LIMIT, make_plan, speech_edges
 from verify import run_checks
-from common import probe
 
 from conftest import NEED_FFMPEG
 
@@ -32,41 +31,73 @@ def _items(words: list[Word]) -> list[dict]:
     return [p.to_dict() for p in build_phrases(words)]
 
 
-# --- finding 1: quiet phonemes at the edges are speech, not silence ---------------------------------------------
+def _keep(plan: dict) -> tuple[float, float]:
+    return plan["keep"][0]["start"], plan["keep"][-1]["end"]
 
 
-def test_quiet_phonemes_at_the_edges_are_kept() -> None:
-    # Room noise (-61 dB), a quiet consonant 0.50-0.70 s (-41 dB), the loud vowel 0.70-1.40 s, a quiet consonant
-    # 1.40-1.60 s, room noise to 2.6 s. The pause threshold (-30 dB) calls the consonants silence; the edges must not.
-    raw = _pcm([(0.5, 30), (0.2, 300), (0.7, 8000), (0.2, 300), (1.0, 30)])
+# --- quiet phonemes inside the stamps survive, whatever the energy says ----------------------------------------
+
+
+def test_quiet_consonants_at_both_ends_survive() -> None:
+    # A take with almost no room noise (it is under 10 % of the file) and quiet consonants at both ends of the
+    # voice (0.08-0.23 s and 2.23-2.38 s, about -35 dB). The pause threshold calls them silence; the cut must not
+    # go inside the word stamps that hold them.
+    raw = _pcm([(0.08, 30), (0.15, 600), (2.0, 8000), (0.15, 600), (0.08, 30)])
     sound = analyse_pcm(raw)
-    assert sound.edge_threshold < -41.0 < sound.threshold
-    words = [Word("сказал", 0.55, 1.0), Word("всё", 1.05, 1.55)]
-    onset, offset = speech_edges(words, sound.edge_quiet)
-    assert onset == pytest.approx(0.50, abs=0.03) and offset == pytest.approx(1.60, abs=0.03)
-    plan = make_plan(words, 2.6, _items(words), [], quiet=sound.quiet, edge_quiet=sound.edge_quiet)
-    assert plan["keep"][0]["start"] <= 0.50 and plan["keep"][-1]["end"] >= 1.60
+    words = [Word("сказал", 0.09, 1.2), Word("всё", 1.25, 2.38)]
+    start, end = _keep(make_plan(words, 2.46, _items(words), [], quiet=sound.quiet))
+    assert start <= 0.08 and end >= 2.38
 
 
-# --- finding 2: a one-word answer with a stale stamp ----------------------------------------------------------------
+def test_a_take_with_no_internal_pauses_widens_to_the_voice() -> None:
+    # Continuous voice 0.40-2.40 s, room noise around it; the stamps are 0.05 s late on both sides. The energy
+    # moves the edges OUT to the voice, and the pad is kept outside it.
+    raw = _pcm([(0.4, 20), (2.0, 8000), (0.6, 20)])
+    sound = analyse_pcm(raw)
+    words = [Word("раз", 0.45, 1.4), Word("два", 1.45, 2.35)]
+    plan = make_plan(words, 3.0, _items(words), [], quiet=sound.quiet)
+    start, end = _keep(plan)
+    assert plan["speech_edges"]["onset"] == pytest.approx(0.40, abs=0.03)
+    assert plan["speech_edges"]["offset"] == pytest.approx(2.40, abs=0.03)
+    assert start == pytest.approx(0.40 - DEFAULT_HEAD_AIR, abs=0.04)
+    assert end == pytest.approx(2.40 + DEFAULT_TAIL_AIR, abs=0.04)
 
 
-def test_one_word_stamped_in_the_silence_before_its_sound_is_kept() -> None:
-    # The stamp says 0.20-0.40 s, the voice sounds 0.60-1.00 s.
-    words = [Word("да", 0.20, 0.40)]
-    quiet = [Span(0.0, 0.6), Span(1.0, 2.0)]
-    assert speech_edges(words, quiet, duration=2.0) == (0.6, 1.0)
-    plan = make_plan(words, 2.0, _items(words), [], quiet=quiet)
-    assert plan["keep"][0]["start"] <= 0.6 and plan["keep"][-1]["end"] >= 1.0
+def test_noise_floor_near_the_speech_level_keeps_the_stamps_and_the_pad() -> None:
+    # The room is almost as loud as the voice: every window counts as sound. The edges stay at the stamps with
+    # the pad (no inward cut, no runaway outward cut through 1 s of noise).
+    raw = _pcm([(1.0, 5000), (1.0, 8000), (1.0, 5000)])
+    sound = analyse_pcm(raw)
+    words = [Word("раз", 1.0, 1.5), Word("два", 1.55, 2.0)]
+    start, end = _keep(make_plan(words, 3.0, _items(words), [], quiet=sound.quiet))
+    assert start == pytest.approx(1.0 - DEFAULT_HEAD_AIR, abs=0.04)
+    assert end == pytest.approx(2.0 + DEFAULT_TAIL_AIR, abs=0.04)
 
 
-def test_one_word_stamped_in_the_silence_after_its_sound_is_kept() -> None:
-    words = [Word("нет", 1.30, 1.60)]
-    quiet = [Span(0.0, 0.5), Span(0.9, 2.0)]
-    assert speech_edges(words, quiet, duration=2.0) == (0.5, 0.9)
+# --- stale stamps of a one-word take --------------------------------------------------------------------------
 
 
-# --- finding 3: at most 0.10 s of non-speech at each end, in output seconds, after the frame grid ------------------
+@pytest.mark.parametrize(("stamp", "voice"), [((1.30, 1.60), (0.50, 0.90)), ((0.20, 0.40), (0.80, 1.20))])
+def test_stale_single_word_stamp_plans_and_keeps_the_voice(stamp: tuple[float, float],
+                                                            voice: tuple[float, float]) -> None:
+    words = [Word("нет", *stamp)]
+    quiet = [Span(0.0, voice[0]), Span(voice[1], 2.0)]
+    plan = make_plan(words, 2.0, _items(words), [], quiet=quiet)  # no PlanError
+    start, end = _keep(plan)
+    assert start <= voice[0] and end >= voice[1]  # the voice is kept
+    assert start <= stamp[0] and end >= stamp[1]  # the stamp is never cut into
+
+
+def test_stale_stamp_does_not_take_a_long_far_sound() -> None:
+    # Review case: the word sits in silence 0-2 s, the file sounds from 2 s to its end at 60 s. The sound is near
+    # the stamp but its far end is 58.8 s away: it is not taken automatically, the stamps stay.
+    words = [Word("нет", 1.0, 1.2)]
+    assert speech_edges(words, [Span(0.0, 2.0)], duration=60.0) == (1.0, 1.2)
+    # mirrored: sound from 0 s to 58 s, the word at 58.8-59.0 s in silence
+    assert speech_edges([Word("нет", 58.8, 59.0)], [Span(58.0, 60.0)], duration=60.0) == (58.8, 59.0)
+
+
+# --- the air limit, in output seconds, after speed and the frame grid --------------------------------------------
 
 
 @pytest.mark.parametrize("speed", [1.0, 1.3, 0.5])
@@ -84,7 +115,7 @@ def test_edge_air_stays_within_the_limit_after_speed_and_frames(speed: float, ai
     assert keep[0][0] <= onset and keep[-1][1] >= offset  # no speech lost
 
 
-# --- finding 4: a video longer than its audio ends on silence ------------------------------------------------------
+# --- verify.py: where the audio ends -----------------------------------------------------------------------------
 
 
 @NEED_FFMPEG
@@ -100,3 +131,48 @@ def test_speech_end_fails_when_the_audio_stops_before_the_video(tmp_path: Path) 
     assert info.duration > 1.8
     checks = {c.name: c for c in run_checks(clip, info, None, 90.0, 99.0, 5.0)}
     assert not checks["speech end"].ok, checks["speech end"].line()
+
+
+@NEED_FFMPEG
+def test_a_gap_inside_the_audio_is_not_silence_at_the_end(tmp_path: Path) -> None:
+    # The tone has a 0.20 s timestamp gap at 0.5 s; audio and video both end at about 1.27 s. The decoded sound is
+    # 0.2 s shorter than the timeline; the end must be read from the packet timestamps.
+    audio = tmp_path / "gap.m4a"
+    clip = tmp_path / "gap.mp4"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000:duration=1.066",
+         "-af", "asetpts='if(gte(T,0.5),PTS+0.2/TB,PTS)'", "-c:a", "aac", str(audio)],
+        check=True,
+    )
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=1080x1920:r=30:d=1.266667",
+         "-i", str(audio), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+         "-shortest", str(clip)],
+        check=True,
+    )
+    info = probe(clip)
+    checks = {c.name: c for c in run_checks(clip, info, None, 90.0, 99.0, 5.0, max_trail=0.1)}
+    assert checks["speech end"].ok, checks["speech end"].line()
+
+
+
+@NEED_FFMPEG
+def test_a_timestamp_gap_inside_the_audio_fails_the_silent_gap_check(tmp_path: Path) -> None:
+    # The tone has a 1.2 s timestamp gap at 0.6 s (no packets there): the player plays silence. silencedetect on
+    # the raw packets would join the two halves and see no pause; the gap must be restored before it.
+    audio = tmp_path / "hole.m4a"
+    clip = tmp_path / "hole.mp4"
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=300:sample_rate=48000:duration=1.8",
+         "-af", "asetpts='if(gte(T,0.6),PTS+1.2/TB,PTS)'", "-c:a", "aac", str(audio)],
+        check=True,
+    )
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=1080x1920:r=30:d=3",
+         "-i", str(audio), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart",
+         "-shortest", str(clip)],
+        check=True,
+    )
+    info = probe(clip)
+    checks = {c.name: c for c in run_checks(clip, info, None, 90.0, 99.0, 0.8)}
+    assert not checks["silent gaps"].ok, checks["silent gaps"].line()

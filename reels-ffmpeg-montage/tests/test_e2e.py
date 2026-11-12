@@ -85,9 +85,11 @@ def test_words_cut_match_the_new_video(work: dict[str, Path]) -> None:
     assert cut.words[0].start >= 0.0 and cut.words[-1].end <= probe(work["video"]).duration + 0.05
     starts = [w.start for w in cut.words]
     assert starts == sorted(starts)
-    # the reel opens on the first word: at most 0.10 s of air plus one frame of snapping
-    assert 0.0 <= cut.words[0].start <= 0.10 + 1 / 30
-    assert probe(work["video"]).duration - cut.words[-1].end <= 0.10 + 1 / 30
+    # the reel opens on the padded first word; the air at each edge, measured on the sound, is <= EDGE_LIMIT
+    assert 0.0 <= cut.words[0].start <= plan_cut.EDGE_LIMIT
+    info = probe(work["video"])
+    checks = {c.name: c for c in verify.run_checks(work["video"], info, None, 90.0, 99.0, 5.0)}
+    assert checks["speech start"].ok and checks["speech end"].ok, checks["speech end"].line()
 
 
 def test_verify_passes_and_exports_seam_frames(work: dict[str, Path]) -> None:

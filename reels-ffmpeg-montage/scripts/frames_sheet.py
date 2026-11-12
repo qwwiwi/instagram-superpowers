@@ -40,7 +40,7 @@ FRAME_H = 1920
 LABEL_BAND = 40
 GAP = 8
 # Interface zones of the regulation (rule 1.7), in frame pixels.
-GUIDE_ROWS = (115, 960, 1520)
+GUIDE_ROWS = (140, 960, 1520)
 BUTTONS_BOX = (950, 1080, 1080, 1720)  # x0, y0, x1, y1
 GUIDE_COLOR = (255, 0, 200)
 # Change measure: frames are scaled down by this factor and compared in gray.
