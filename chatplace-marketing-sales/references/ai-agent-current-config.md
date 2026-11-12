@@ -21,7 +21,7 @@
 | answerOnMessageEnabled | `true` | DM отвечает сразу |
 | answerOnCommentEnabled | `false` | комменты пока не трогаем, обкатываем DM |
 | engageCommentUserEnabled | `false` | включить после обкатки комментов |
-| generateButtons | `true` | кнопки к ответам помогают CTR |
+| generateButtons | `true` | quick-reply варианты ответа для пользователя (НЕ URL-кнопки, ссылки идут текстом) |
 | autoRetrainOnDialogs | `true` | обучение по реальным диалогам |
 | responseDelay | `45` | секунд задержки |
 | responseDelayEnabled | `true` | выглядит как живой |
@@ -30,20 +30,21 @@
 
 ## Global rules (ai_agent_update_global_rules, enabled:true)
 
-Полный текст — в `/tmp/global_rules.txt` (снэпшот). Ключевые принципы:
+Полный текст – через `ai_agent_get_global_rules`. Основные положения:
 
 - Роль: AI-ассистент, отвечающий от имени владельца аккаунта @your_instagram.
 - Миссия: продать 3-дневный воркшоп по AI-агентам.
 - Обращение на «ты», кратко (1–3 предложения), без эмодзи (редко 👍🏻/💌), без канцелярита.
 - **НИКОГДА** не называть даты старта. Только «3 дня», «3-дневный», «скоро».
 - Ссылки:
-  - Тёплый (воркшоп): `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent`
+  - Тёплый (воркшоп): `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent_warm`
   - Возражения: тот же лендинг, `utm_campaign=agent_objection`
-  - Гайды: `https://yourdomain.com/lp/?utm_source=instagram&utm_medium=chatplace&utm_campaign=agent`
+  - Гайды: `https://yourdomain.com/guides` (ссылка на воркшоп рядом – с `utm_campaign=agent_guides`)
+  - Каждый сегмент – свой URL с явным суффиксом; один URL на все случаи в global rules не прописывать
   - Холодный канал: `https://t.me/+YOUR_CHANNEL_INVITE` (your Telegram channel)
-- **НЕ шли** `your-internal-url.example` (внутренняя ссылка).
+- Внутренние ссылки (админка, партнёрка) не отдавать.
 - Запрещено: обещать сроки / результаты, давать конкретные даты, советы по здоровью / финансам / юриспруденции.
-- Client name: каноническое имя владельца (задайте в global rules; все варианты Whisper-опечаток проверьте через grep перед заливом).
+- Имя владельца: каноническое написание задаётся в global rules.
 
 ## Topic rules (4)
 
@@ -69,8 +70,6 @@
 | Контент/канал | ~4 | «Что в канале владельца?» (каноническое имя — см. global rules), «Про что пишешь?» |
 | Возражения | ~6 | «Дорого», «Нет времени», «Я новичок», «У меня есть ChatGPT» |
 | Разное | ~2 | «Кто ты?», «С кем можно связаться?» |
-
-**⚠ Namespace hygiene:** Whisper voice transcripts часто искажают имена. Перед заливом KB: `grep -iE 'variant1|variant2' *.txt` → заменить на каноническое имя клиента.
 
 ## Как перечитать живую конфигурацию
 
@@ -100,4 +99,4 @@ curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Conten
 
 ## История изменений
 
-- **YYYY-MM-DD** — первый запуск. Агент создан через UI, настроены global rules + 4 topic rules + ~30 KB + settings. Опубликован после подключения AI Pack. Whisper-опечатки в именах почищены grep'ом перед заливом.
+- **YYYY-MM-DD** — первый запуск. Агент создан через UI, настроены global rules + 4 topic rules + ~30 KB + settings. Опубликован после подключения AI Pack.
