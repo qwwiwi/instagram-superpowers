@@ -112,6 +112,38 @@ def frame_times(duration: float, fps: float, step: float = 0.5, fine: float = 0.
     return sorted(t for t in times if t <= last + 1e-9)
 
 
+def video_duration(video: Path, fallback: float) -> float:
+    """Length of the video stream itself, seconds.
+
+    The container duration is the longest stream: a rendered reel whose audio runs a few frames past
+    the last picture would otherwise ask for frames that do not exist.
+
+    Args:
+        video: Media file.
+        fallback: Duration to use when the stream reports neither a frame count nor a duration.
+    """
+    require_tool("ffprobe")
+    done = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration,nb_frames,avg_frame_rate",
+         "-of", "default=noprint_wrappers=1", str(video)],
+        capture_output=True, text=True, check=False,
+    )
+    fields = dict(line.split("=", 1) for line in done.stdout.splitlines() if "=" in line)
+    try:
+        num, _, den = fields.get("avg_frame_rate", "0/1").partition("/")
+        rate = float(num) / float(den or 1)
+        frames = int(fields.get("nb_frames", "0"))
+        if frames > 0 and rate > 0:
+            return frames / rate
+    except (ValueError, ZeroDivisionError):
+        pass
+    try:
+        value = float(fields.get("duration", "nan"))
+    except ValueError:
+        value = math.nan
+    return value if math.isfinite(value) and value > 0 else fallback
+
+
 def frame_name(seconds: float) -> str:
     """File name of a frame: ``t0012.50.jpg``."""
     return f"t{seconds:07.2f}.jpg"
@@ -385,12 +417,13 @@ def run(args: argparse.Namespace) -> int:
     if (info.width, info.height) != (FRAME_W, FRAME_H):
         raise MontageError(f"{video} is {info.width}x{info.height}; the regulation is written for {FRAME_W}x{FRAME_H}")
     fps = info.fps or 30.0
-    last_index = max(0, round(info.duration * fps) - 1)
-    times = frame_times(info.duration, fps, args.step, args.fine, args.head, args.tail)
+    duration = video_duration(video, info.duration)
+    last_index = max(0, round(duration * fps) - 1)
+    times = frame_times(duration, fps, args.step, args.fine, args.head, args.tail)
     out: Path = args.out
     frames_dir = out / "frames"
     export_frames(video, times, fps, last_index, frames_dir)
-    sheets = group_sheets(times, info.duration, args.head, args.tail, args.cols * args.rows)
+    sheets = group_sheets(times, duration, args.head, args.tail, args.cols * args.rows)
     method = build_sheets(sheets, frames_dir, out, args.cols, args.scale, not args.no_guides)
     index = index_text(sheets)
     (out / "index.txt").write_text(index, encoding="utf-8")

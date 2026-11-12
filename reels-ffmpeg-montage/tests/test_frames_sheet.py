@@ -137,6 +137,26 @@ def test_cli_exports_frames_sheets_and_finds_the_static_stretch(tmp_path: Path, 
 
 
 @NEED_FFMPEG
+def test_audio_longer_than_the_picture_does_not_ask_for_missing_frames(tmp_path: Path) -> None:
+    # A real take: the AAC track ends two frames after the last picture, so the container is longer.
+    silent = tmp_path / "silent.mp4"
+    make_moving_clip(silent, 3.0)
+    clip = tmp_path / "clip.mp4"
+    subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(silent),
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3.2",
+         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", str(clip)],
+        check=True,
+    )
+    assert frames_sheet.probe(clip).duration > 3.1
+    out = tmp_path / "accept"
+    assert frames_sheet.main([str(clip), "--out", str(out), "--head", "1", "--tail", "1"]) == 0
+    frames = sorted(p.name for p in (out / "frames").glob("*.jpg"))
+    assert frames[-1] == "t0002.97.jpg"
+    assert frames_sheet.video_duration(clip, 0.0) == pytest.approx(3.0, abs=1e-3)
+
+
+@NEED_FFMPEG
 def test_sheets_without_pillow_and_drawtext_fall_back_to_the_printed_index(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     clip = tmp_path / "clip.mp4"
