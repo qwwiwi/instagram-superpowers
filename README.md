@@ -128,4 +128,4 @@ MIT – используйте, форкайте, адаптируйте под 
 
 ## Автор
 
-Собрано в [EdgeLab](https://edgelab.su) – учим собирать AI-агентов за 3 дня без кода. [Воркшоп](https://edgelab.su/workshop/?utm_source=github&utm_medium=repo&utm_campaign=instagram-superpowers).
+Telegram: https://t.me/dashi_agent
