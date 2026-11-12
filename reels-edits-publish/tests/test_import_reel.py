@@ -28,13 +28,13 @@ def test_check_source_guards(tmp_path: Path) -> None:
 
 
 def test_plan_calls_order_and_payloads() -> None:
-    calls = plan_calls(Path("/Users/someone/Movies/r/reel.mp4"), " Мой рилс ", "p-1")
+    calls = plan_calls(Path("/tmp/Movies/r/reel.mp4"), " Мой рилс ", "p-1")
     assert [tool for tool, _ in calls] == ["renameProject", "setProjectDynamicRange", "setAspectRatio", "setCanvas", "importMedia"]
     assert calls[0][1] == {"id": "p-1", "name": "Мой рилс"}
     assert calls[1][1] == {"range": "sdr"}
     assert calls[2][1] == {"ratio": "9:16"}
     assert calls[3][1] == {"frameRate": 30}
-    assert calls[4][1] == {"path": "/Users/someone/Movies/r/reel.mp4"}
+    assert calls[4][1] == {"path": "/tmp/Movies/r/reel.mp4"}
     with pytest.raises(ValueError):
         plan_calls(Path("/x.mp4"), "  ")
 
