@@ -333,6 +333,7 @@ tl.to("#small-card", { scale: 1 + 0.03 * hold, duration: hold, ease: "none" }, t
 
 // List rows one by one with no pre-drawn slots (rule 4.9): with k of N rows on screen the block stays centred,
 // older rows move apart when the next one arrives. Rows are absolutely positioned at their final places.
+// Rows on a card: the card grows with them, see 2.7 (rule 4.10).
 const STEP = 186, N = 3, rows = ["#c-1", "#c-2", "#c-3"], at = [t, t + 1.1, t + 2.0];
 rows.forEach((id, k) => {
   const y = (N - k - 1) * STEP / 2;
@@ -462,8 +463,13 @@ python3 $S/verify.py reel.mp4                        # duration, size, fps, loud
 Пункт приходит на своём слове – карточка растёт за 0,30 с, соседи едут вместе с ней, и в
 каждый момент карточка стоит по центру своей зоны. Под будущие пункты ничего не рисуется.
 Высота карточки – единственное анимируемое свойство раскладки (`height`); всё остальное –
-`y`, `scale`, `opacity`. Карточка обрезает содержимое (`overflow: hidden`), поэтому новый
-пункт «открывается» вместе с ростом и не лежит на рамке; бейдж на кромке – сосед в общей
+`y`, `scale`, `opacity`. До своего слова новый пункт полностью невидим; на слове он появляется
+вместе с ростом, а не после него: в том же отрезке и с тем же замедлением пункт раскрывается
+от своей строки текста к краям (`clip-path: inset(50% 0 50% 0)` → `inset(0)`), а карточка
+обрезает содержимое (`overflow: hidden`), поэтому пункт не лежит на рамке. Край растущей
+карточки может частично обрезать пункт, но на каждом кадре, где виден фон или контур пункта,
+видна и часть его настоящего текста или значка (они стоят на средней линии ряда): кадров
+только с фоном пузыря или ряда нет (правила 4.9, 4.10). Бейдж на кромке – сосед в общей
 обёртке, он едет с карточкой и не обрезается. Числа детерминированы: ни `Math.random`, ни
 бесконечных повторов.
 
@@ -525,12 +531,15 @@ function growCard(wrap, card, heights, times, zoneTop = 140, zoneH = 602, dur = 
     tl.to(wrap, { y, duration: dur, ease: "power2.out" }, times[k]);   // the badge and the rows move with it
   });
 }
-// Items after the first: hidden until their word, then revealed by the growing card (clipped by overflow).
-function revealItems(ids, times) {
+// Items after the first: wholly invisible until their word, then opened together with the growth (same start,
+// duration and ease) from their text line outwards, so a visible strip of the row always holds part of its text
+// or icon (both sit on the row's middle line). The card edge may still clip the row (overflow: hidden).
+function revealItems(ids, times, dur = 0.3) {
   ids.forEach((id, k) => {
     if (k === 0) return;                                             // the first item is there on the cut
-    tl.set(id, { opacity: 0, scale: 0.92 }, 0);
-    tl.to(id, { opacity: 1, scale: 1, duration: 0.25, ease: "back.out(1.6)" }, times[k]);
+    tl.set(id, { opacity: 0, clipPath: "inset(50% 0% 50% 0%)" }, 0);
+    tl.set(id, { opacity: 1 }, times[k]);
+    tl.to(id, { clipPath: "inset(0% 0% 0% 0%)", duration: dur, ease: "power2.out" }, times[k]);
   });
 }
 const listAt = [6.00, 7.10, 8.05];                                   // word starts from words-cut.json
@@ -543,9 +552,11 @@ revealItems(["#gc-1", "#gc-2", "#gc-3", "#gc-4"], chatAt);
 tl.to("#gl-1 .pill", { scale: 1.05, duration: 0.5, repeat: 3, yoyo: true, ease: "sine.inOut" }, listAt[0] + 0.3);
 ```
 
-Проверка до рендера: снимки на `t − 0,25`, `t`, `t + 0,15`, `t + 0,35` вокруг прихода каждого
-пункта (`hyperframes snapshot build --at …`): ни одного пустого ряда, пункт не лежит на
-рамке или соседе, полосы над и под карточкой меньше 250 px.
+Проверка до рендера: снимки на `t − 0,25`, `t`, `t + 0,05`, `t + 0,10`, `t + 0,15`, `t + 0,35`
+вокруг прихода каждого пункта (`hyperframes snapshot build --at …`): до слова пункта не видно
+совсем; на каждом снимке роста, где виден фон или контур нового пункта, видна и часть его
+текста или значка; ни одного пустого ряда, пункт не лежит на рамке или соседе, полосы над и
+под карточкой меньше 250 px.
 
 ## 3. Путь Б: склейка ffmpeg
 
