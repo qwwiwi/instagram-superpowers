@@ -100,7 +100,7 @@ def test_acceptance_has_a_placeholder_fail_row_and_a_frame_zero_check() -> None:
 
 def test_acceptance_checks_the_whole_head_with_numbers() -> None:
     row = next(line for line in _read("montage-acceptance.md").splitlines() if line.startswith("| 1.3 |"))
-    assert "y ≥ 980" in row and "y ≤ 1880" in row and "--y0" in row, row
+    assert "y ≥ 1000" in row and "y ≤ 1520" in row and "--y0" in row, row
 
 
 def test_acceptance_checks_every_detail_rule_of_section_13() -> None:
@@ -180,3 +180,45 @@ def test_edge_badges_of_the_skeletons_stay_in_the_safe_zone() -> None:
         assert x_right <= SAFE_RIGHT, f"badge «{badge.group(1)}» reaches x {x_right:.0f}"
         checked += 1
     assert checked >= 3
+
+
+# --- the skill flow: model, fresh acceptance, publication as step 4 ----------------------------------------------------
+
+SKILL = REFERENCES.parent / "SKILL.md"
+README = REFERENCES.parent.parent / "README.md"
+
+
+def test_publication_is_step_4_of_the_main_flow() -> None:
+    skill = SKILL.read_text(encoding="utf-8")
+    flow = skill.split("## Общий порядок: четыре шага", 1)[1].split("\n## ", 1)[0]
+    steps = re.findall(r"^(\d)\. \*\*([^*]+)\*\*", flow, flags=re.M)
+    assert [n for n, _ in steps] == ["1", "2", "3", "4"] and steps[3][1] == "Публикация", steps
+    assert "## Шаг 4. Публикация" in skill
+    readme = README.read_text(encoding="utf-8")
+    assert "**4. Публикация**" in readme
+
+
+def test_publication_rules_are_safe_and_generic() -> None:
+    skill = SKILL.read_text(encoding="utf-8")
+    section = skill.split("## Шаг 4. Публикация", 1)[1].split("\n## ", 1)[0]
+    for must in ("явного слова", "тестовый", "API", "macOS", "кликами"):
+        assert must in section, must
+
+
+def test_model_rule_and_fresh_acceptance_are_written() -> None:
+    skill = SKILL.read_text(encoding="utf-8")
+    model = skill.split("## Модель", 1)[1].split("\n## ", 1)[0]
+    assert "Opus 5.5" in model and "medium" in model and "Sonnet" in model
+    acceptance = _read("montage-acceptance.md")
+    assert "свежим контекстом" in acceptance and "Самоприёмка сборщика не считается" in acceptance
+    assert "Самоприёмка сборщика не считается" in skill
+
+
+def test_every_acceptance_fail_class_has_a_rule_and_a_checklist_row() -> None:
+    reglament = _read("montage-reglament.md")
+    acceptance = _read("montage-acceptance.md")
+    for n in range(1, 12):
+        assert f"**14.{n}." in reglament, f"rule 14.{n} missing"
+        assert re.search(rf"^\| 14\.{n} \|", acceptance, flags=re.M), f"no checklist row 14.{n}"
+        assert re.search(rf"^\| 14\.{n} ", acceptance.split("## 6.", 1)[1], flags=re.M), f"no table row 14.{n}"
+    assert "frame_check.py frames" in acceptance and "frame_check.py text" in acceptance

@@ -225,19 +225,20 @@ def test_split_offset_puts_the_hair_60_px_under_the_seam() -> None:
 
 def test_split_offset_tightens_for_a_long_face_and_keeps_a_close_up_whole() -> None:
     fit = head_guide.split_offset(top=500, chin=990)  # 490 px face: 60 px gap would put the chin at 1510
-    assert fit.y0 == 480 and fit.top == 980 and fit.chin == 1470 and fit.verdict == "ok"
+    assert fit.y0 == 460 and fit.top == 1000 and fit.chin == 1490 and fit.verdict == "ok"
+    # 580 px head: scaled down a little so the mouth and chin stay above the interface zone (y 1520).
     close = head_guide.split_offset(top=500, chin=1080)
-    assert close.chin == 1560 and close.verdict == "warn"
-    # 900 px head: the hair goes right under the seam, the chin stays 40 px above the bottom.
+    assert close.scale < 1.0 and close.top == 1000 and close.chin <= 1520 and close.verdict == "ok"
+    # 900 px head: scale under 0.85 - whole head above y 1520, the student hears the take is close.
     big = head_guide.split_offset(top=400, chin=1300)
-    assert (big.top, big.chin, big.scale, big.verdict) == (980, 1880, 1.0, "warn")
+    assert big.top == 1000 and big.chin <= 1520 and big.scale < 0.85 and big.verdict == "warn"
 
 
 def test_close_up_is_scaled_down_never_cut() -> None:
     # A real close-up: 935 px from the hair to the chin (a tilt included). Before, the seam cut the hair.
     fit = head_guide.split_offset(top=625, chin=1560, eyes=1065)
     assert fit.scale < 1.0 and fit.verdict == "warn"
-    assert fit.top >= 960 + head_guide.HEAD_MARGIN_TOP and fit.chin <= 1920 - head_guide.HEAD_MARGIN_BOTTOM
+    assert fit.top >= 960 + head_guide.HEAD_MARGIN_TOP and fit.chin <= head_guide.CHIN_LIMIT
     assert "close-up" in fit.notes[0]
     # Too big even at the smallest scale: a fail with the reason.
     huge = head_guide.split_offset(top=200, chin=1400)
@@ -248,7 +249,10 @@ def test_a_crop_that_cuts_the_head_is_a_fail(capsys: pytest.CaptureFixture[str])
     # The crop of the old close-up branch: y0 880 puts the hair top above the seam.
     cut = head_guide.crop_fit(top=625, chin=1560, y0=880)
     assert cut.verdict == "fail" and cut.top < 960 and "cuts the head" in cut.notes[0]
-    assert head_guide.crop_fit(top=625, chin=1560, y0=574, scale=0.95).verdict != "fail"
+    assert head_guide.crop_fit(top=625, chin=1560, y0=308, scale=0.556).verdict != "fail"
+    # The old close-up crop: the head is whole, but mouth and chin sit under the bottom interface zone.
+    low = head_guide.crop_fit(top=625, chin=1560, y0=574, scale=0.95)
+    assert low.verdict == "fail" and low.chin > 1520 and "interface zone" in " ".join(low.notes)
     assert head_guide.main(["--top", "625", "--chin", "1560", "--y0", "880"]) == 1
     assert "FAIL" in capsys.readouterr().out
     assert head_guide.main(["--top", "610", "--chin", "1010"]) == 0
