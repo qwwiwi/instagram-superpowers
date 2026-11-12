@@ -76,3 +76,45 @@ def test_palette_text_colours_reach_4_5_on_their_backgrounds() -> None:
                 assert contrast(color, bg) >= 4.5, f"{color} on {bg} in {label!r}: {contrast(color, bg):.2f}"
                 checked += 1
     assert checked >= 6
+
+
+def _read(name: str) -> str:
+    return (REFERENCES / name).read_text(encoding="utf-8")
+
+
+def test_reglament_no_longer_allows_empty_slots_or_placeholders() -> None:
+    text = _read("montage-reglament.md")
+    for allowed in ("слот считается содержимым", "серые строки-заглушки допустимы", "пустыми слотами",
+                    "каждой будущей строке стоит приглашение", "остальное – серые заглушки"):
+        assert allowed not in text.lower(), allowed
+    assert "**4.9. Пустых заготовок нет – никогда.**" in text
+    assert "шов срезает волосы" not in text, "the close-up branch must scale the speaker down, not cut the head"
+
+
+def test_acceptance_has_a_placeholder_fail_row_and_a_frame_zero_check() -> None:
+    text = _read("montage-acceptance.md")
+    assert re.search(r"^\| 4\.9 \| заготовки \|.*заготовка на экране = провал", text, flags=re.M)
+    assert re.search(r"^\| 3\.7 \| кадр 0,00: заголовок-хук \|.*≥ 72 px.*≤ 0,15 с", text, flags=re.M)
+    assert "слоты будущих пунктов – содержимое" not in text
+
+
+def test_acceptance_checks_the_whole_head_with_numbers() -> None:
+    row = next(line for line in _read("montage-acceptance.md").splitlines() if line.startswith("| 1.3 |"))
+    assert "y ≥ 980" in row and "y ≤ 1880" in row and "--y0" in row, row
+
+
+def test_acceptance_checks_every_detail_rule_of_section_13() -> None:
+    text = _read("montage-acceptance.md")
+    for n in range(1, 11):
+        assert re.search(rf"^\| 13\.{n} \|", text, flags=re.M), f"no acceptance row for rule 13.{n}"
+    reglament = _read("montage-reglament.md")
+    for n, tag in enumerate(("D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"), start=1):
+        assert re.search(rf"\*\*13\.{n}\. [^*]*\({tag}\)\.\*\*", reglament), f"rule 13.{n} ({tag}) is missing"
+
+
+def test_storyboard_and_skeletons_carry_no_placeholders() -> None:
+    for name in ("storyboard-template.md", "layout-patterns.md"):
+        text = _read(name).lower()
+        for word in ("слот", "заглушк", "пунктирная рамка", "подсказкой «добавьте"):
+            assert word not in text, f"{word!r} in {name}"
+    assert "Кадр 0,00: заголовок-хук" in _read("storyboard-template.md")

@@ -1,8 +1,15 @@
 # Скелеты раскладок
 
-Готовые заготовки, чтобы геометрию не придумывать заново. Все числа – из
-`montage-reglament.md` (кадр 1080 × 1920, 30 к/с). Тексты в примерах условные: в
-ролике на экране только слова речи студента (правило 4.2).
+Готовые раскладки, чтобы геометрию не придумывать заново. Все числа – из
+`montage-reglament.md` (кадр 1080 × 1920, 30 к/с). Тексты в примерах условные (общий
+инструмент командной строки, файлы `README.md`, `config.yaml`): в ролике на экране только
+слова речи студента и настоящие метки инструмента, о котором речь (правила 4.2, 13.3).
+
+Каждая сцена в скелетах уже детализирована по разделу 13 регламента: фон с фактурой,
+карточка с рамкой и жёсткой тенью, хром своего типа, строки «значок + жирное название +
+состояние справа», акцент на кромке, микродвижение при удержании, пункты по одному на
+своих словах. Пустых заготовок – мест под будущие пункты, серых полос, `$` без команды,
+пустых полей – в скелетах нет и добавлять их нельзя (правило 4.9).
 
 Два пути сборки, выбирается один на ролик:
 
@@ -27,7 +34,9 @@
 | «Два визуала» | верх y 115–820, разделитель y 836–840, низ y 860–1280 |
 | Субтитр СПИКЕРА «грудь» | верх блока y 1180, низ ≤ 1352 (строки плашек с шагом 92 px) |
 | Субтитр СПИКЕРА «над головой» | низ блока = верх волос − 24 (самый высокий верх волос за план); 2 строки плашек – 172 px |
-| Срез спикера в СПЛИТЕ | строки исходника `[y0, y0 + 960]`, `y0` по правилу 1.3 (`head_guide.py --top … --chin …`) |
+| Срез спикера в СПЛИТЕ | строки исходника `[y0, y0 + 960]`, `y0` и масштаб по правилу 1.3 (`head_guide.py --top … --chin …`); голова целиком: верх волос y ≥ 980, подбородок y ≤ 1880; проверка среза – `head_guide.py --top … --chin … --y0 … [--scale …]` (код 1 – FAIL) |
+| Спикер уменьшен (крупный план) | масштаб `s` 0,85–1,0: видео `1080·s × 1920·s`, по центру (`left = 540·(1 − s)`), `top = −y0`; боковые поля – копия того же кадра, размытие ≥ 30 px, яркость −30…−50 % |
+| Заголовок-хук на кадре 0,00 | ≥ 72 px, 2–6 слов, строка над карточкой y 140–330 (1–2 строки); виден и непрозрачен с кадра 0 (правило 3.7) |
 | Не трогать | y 0–115, y 1520–1920, x 950–1080 при y 1080–1720 |
 
 ## 2. Путь А: композиция HyperFrames
@@ -110,12 +119,15 @@ build/
   html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--bg-dark); }
   #root { position: relative; width: 1080px; height: 1920px; font-family: "Ui", sans-serif; }
 
-  /* Speaker half of a split: untimed wrapper that crops the take (rule 1.3). */
+  /* Speaker half of a split: untimed wrapper that crops the take (rule 1.3: the whole head, hair >= y 980, chin <= y 1880). */
   .speaker-half { position: absolute; left: 0; top: 960px; width: 1080px; height: 960px; overflow: hidden; z-index: 1; }
   .speaker-half video { position: absolute; left: 0; width: 1080px; height: 1920px; } /* top: -y0 */
+  /* Close-up scaled to s (0.85-1.0): the speaker is 1080*s x 1920*s, centred; the side gaps show a blurred,
+     darkened copy of the same frame (never a flat bar). */
+  .speaker-half video.spk-fill { filter: blur(30px) brightness(0.6); }
   .speaker-full { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 1; }
 
-  /* Scene backgrounds with a 120 px grid. */
+  /* Scene backgrounds with texture (rule 13.1): never one flat colour. */
   .bg-dark   { background-color: var(--bg-dark);
                background-image: linear-gradient(var(--grid-dark) 2px, transparent 2px),
                                  linear-gradient(90deg, var(--grid-dark) 2px, transparent 2px);
@@ -133,20 +145,39 @@ build/
   .scene-split  { position: absolute; left: 0; top: 0; width: 1080px; height: 960px; z-index: 2; }
   .scene-visual { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 2; }
 
-  /* Card (rule 6.4). */
+  /* Hook title (rule 3.7): readable on frame 0.00, >= 72 px, no fade/pop/typing from 0. */
+  .hook-title { position: absolute; left: 120px; top: 150px; width: 840px; text-align: center;
+                font: 700 72px/90px "Display", sans-serif; letter-spacing: .04em; text-transform: uppercase;
+                color: var(--ink-on-dark); }
+
+  /* Card (rules 6.4, 13.5): 4 px border, hard 8 px shadow, radius 24. */
   .card { position: absolute; background: var(--card); border: 4px solid var(--ink); border-radius: 24px;
-          box-shadow: 0 8px 0 var(--ink); padding: 32px; color: var(--ink); }
+          box-shadow: 0 8px 0 var(--ink); padding: 0 32px 32px; color: var(--ink); }
   .bg-dark .card { box-shadow: 0 8px 0 #000; }
-  .card-dark { background: var(--card-dark); border-color: #3A414C; box-shadow: 0 8px 0 #000; color: var(--ink-on-dark);
-               font-family: "Mono", monospace; }
-  .card h3 { font: 600 44px "Ui", sans-serif; }   /* card header, rule 8.2: 40-48 px (a scene title above the card is 56-80 px) */
-  .row { height: 112px; margin-top: 20px; border-radius: 16px; background: #EEF1F4;
-         display: flex; align-items: center; gap: 24px; padding: 0 28px; font: 500 36px "Ui", sans-serif; }
-  .mono { font: 500 44px "Mono", monospace; }
+  .card-dark { background: var(--card-dark); border-color: #3A414C; box-shadow: 0 8px 0 #000; color: var(--ink-on-dark); }
+  /* Card header 70-90 px: icon + title, divider (rule 13.2); 48 px = 1.5 x the 32 px body (rule 13.4). */
+  .head { height: 84px; display: flex; align-items: center; gap: 18px; border-bottom: 3px solid #E3E7EC;
+          font: 700 48px "Ui", sans-serif; }   /* two weights per card: 400 and 700 */
+  .card-dark .head { border-color: #262C35; }
+  .ico { width: 52px; height: 52px; flex: none; border-radius: 14px; background: var(--mark);
+         display: flex; align-items: center; justify-content: center; }
+  .ico svg { width: 30px; height: 30px; fill: none; stroke: var(--ink); stroke-width: 2.5; }
+  /* Row = icon + bold name + state on the right (rule 13.2). */
+  .row { position: absolute; left: 32px; right: 32px; height: 100px; border-radius: 16px; background: #EEF1F4;
+         display: flex; align-items: center; gap: 20px; padding: 0 24px; font: 400 32px "Ui", sans-serif; }
+  .row b { font-weight: 700; }
+  .row .state { margin-left: auto; }
+  .mono { font: 500 40px "Mono", monospace; }
   .box { width: 64px; height: 64px; flex: none; border: 4px solid var(--ink); border-radius: 12px; }
   .box.on { background: var(--accent); }   /* tick state: switch the class layer with tl.set on a twin element */
+  /* Accent pill; .edge puts it over the card edge (rule 13.5). Rotation is set with tl.set, not in CSS. */
+  .pill { height: 60px; padding: 0 26px; border-radius: 30px; background: var(--accent); color: #fff;
+          display: inline-flex; align-items: center; font: 700 32px "Ui", sans-serif; letter-spacing: .06em;
+          text-transform: uppercase; white-space: nowrap; }
+  .edge { position: absolute; top: -30px; right: -18px; z-index: 3; border: 4px solid var(--ink); }
+  .caret { display: inline-block; width: 6px; height: 1em; margin-left: 6px; background: currentColor; vertical-align: -0.1em; }
 
-  /* Captions (rules 7.1-7.5). Lines are explicit, never auto-wrapped. */
+  /* Captions (rules 7.1-7.5, 7.8). Lines are explicit, never auto-wrapped, centred on x 540. */
   .cap { position: absolute; left: 120px; width: 840px; z-index: 5; text-align: center;
          font: 700 60px "Display", sans-serif; letter-spacing: 0.04em; text-transform: uppercase; }
   .cap .line { height: 80px; line-height: 80px; white-space: nowrap; }
@@ -167,25 +198,44 @@ build/
 <body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="19" data-width="1080" data-height="1920">
 
-  <!-- Speaker: one <video> per speaker plan. Split plans sit in an untimed cropping wrapper. -->
+  <!-- Speaker: one <video> per speaker plan. Split plans sit in an untimed cropping wrapper; one y0 and one scale per reel. -->
   <div class="speaker-half">
     <video id="spk-1" class="clip" src="speaker.mp4" muted playsinline
            data-start="0" data-duration="3" data-media-start="0" style="top:-550px"></video>
-    <!-- next split plan: same top (one y0 per reel) -->
+    <!-- Close-up at s = 0.9 (head_guide.py prints s and y0): blurred fill first, then the scaled speaker.
+    <video id="spk-1-fill" class="clip spk-fill" src="speaker.mp4" muted playsinline
+           data-start="0" data-duration="3" data-media-start="0" style="top:-560px"></video>
+    <video id="spk-1" class="clip" src="speaker.mp4" muted playsinline data-start="0" data-duration="3"
+           data-media-start="0" style="left:54px; width:972px; height:1728px; top:-530px"></video> -->
   </div>
   <video id="spk-2" class="clip speaker-full" src="speaker.mp4" muted playsinline
          data-start="3" data-duration="2.5" data-media-start="3"></video>
 
-  <!-- Plan 1: split scene (visual half) -->
+  <!-- Plan 1: split scene with the hook title. Frame 0.00: title, header and two real rows already on screen. -->
   <div id="sc-1" class="clip scene-split bg-dark" data-start="0" data-duration="3">
-    <div class="card" style="left:120px; top:140px; width:840px; height:602px">
-      <h3>ЗАГОЛОВОК КАРТОЧКИ</h3>
-      <div class="row" id="sc1-row1">Первая строка</div>
-      <div class="row" id="sc1-row2" style="opacity:0">Вторая строка</div>
+    <div class="hook-title">ТРИ ФАЙЛА</div>   <!-- one line: y 150-240; two lines end at y 330, then the card starts at y 350 -->
+    <div class="card" id="sc1-card" style="left:120px; top:270px; width:840px; height:472px">
+      <div class="head">
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>ПРОЕКТ
+      </div>
+      <div class="row" id="sc1-row1" style="top:108px">
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>README.md</b>
+        <span class="state pill" id="sc1-st1">ГОТОВ</span>
+      </div>
+      <div class="row" id="sc1-row2" style="top:224px">
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>config.yaml</b>
+        <span class="state" style="color:var(--muted)">правка<span class="caret" id="sc1-caret"></span></span>
+      </div>
+      <!-- Third row: not drawn until its word (rule 4.9). -->
+      <div class="row" id="sc1-row3" style="top:340px">
+        <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>notes.md</b>
+        <span class="state pill">НОВЫЙ</span>
+      </div>
+      <div class="pill edge" id="sc1-badge">3 ФАЙЛА</div>
     </div>
   </div>
 
-  <!-- Caption groups: one block per group, never across a cut -->
+  <!-- Caption groups: one block per group, never across a cut; no line made of one short word (rule 7.8) -->
   <div id="cap-1" class="clip cap cap-split on-dark" data-start="0" data-duration="1.1">
     <div class="line"><span class="w" id="w1">ПЕРВОЕ</span></div>
     <div class="line"><span class="w" id="w2">СЛОВО</span> <span class="w key" id="w3">ТРИ</span></div>
@@ -204,8 +254,15 @@ build/
   word("#w1", 0, true);
   word("#w2", 0.62);
   word("#w3", 0.9);
-  // Scene states (rule 2.5): a row slides in on its word.
-  tl.fromTo("#sc1-row2", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.3, ease: "power2.out" }, 0.5);
+  // Hook title: no tween before frame 0 - it is simply there. An accent may move it only later.
+  // Scene states (rule 2.5): the third row pops in on its word, the badge lands on the card edge.
+  tl.set("#sc1-row3", { opacity: 0, y: 40 }, 0);
+  tl.to("#sc1-row3", { opacity: 1, y: 0, duration: 0.22, ease: "back.out(1.7)" }, 0.5);
+  tl.set("#sc1-badge", { opacity: 0, scale: 0.7, rotation: -4 }, 0);
+  tl.to("#sc1-badge", { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2)" }, 1.2);
+  // Micro-motion while held (rule 13.6): caret blinks every 0.5 s, the status pill pulses.
+  tl.to("#sc1-caret", { opacity: 0, duration: 0.01, repeat: 5, yoyo: true, repeatDelay: 0.5 }, 0);
+  tl.to("#sc1-st1", { scale: 1.05, duration: 0.5, repeat: 3, yoyo: true, ease: "sine.inOut" }, 1.0);
   window.__timelines = window.__timelines || {};
   window.__timelines["main"] = tl;
 </script>
@@ -256,6 +313,30 @@ tl.to("#send", { scale: 1, duration: 0.08 }, t + 0.58);
 // Scroll a long card in steps of 0.4 s (inner element moves, the card stays).
 tl.to("#doc", { y: -180, duration: 0.4, ease: "power2.inOut" }, t);
 tl.to("#doc", { y: -360, duration: 0.4, ease: "power2.inOut" }, t + 0.9);
+
+// Micro-motion while a card is held (rule 13.6): something moves at least every 1.5 s.
+// Caret at the end of a real line: blinks every 0.5 s for `hold` seconds.
+tl.to("#caret", { opacity: 0, duration: 0.01, repeat: Math.floor(hold / 0.5), yoyo: true, repeatDelay: 0.5 }, t);
+// Status pill pulses; spinner turns; push-in +3 %/s only for a card that has room in its band.
+tl.to("#status", { scale: 1.05, duration: 0.5, repeat: Math.floor(hold / 0.5) - 1, yoyo: true, ease: "sine.inOut" }, t);
+tl.to("#spinner", { rotation: 360 * hold, duration: hold, ease: "none" }, t);
+tl.to("#small-card", { scale: 1 + 0.03 * hold, duration: hold, ease: "none" }, t);
+// State story "waiting -> working -> done" in 0.5 s steps: stacked labels switched with tl.set.
+["#st-wait", "#st-work", "#st-done"].forEach((id, k, all) => {
+  tl.set(id, { opacity: 1 }, t + k * 0.5);
+  if (k < all.length - 1) tl.set(id, { opacity: 0 }, t + (k + 1) * 0.5);
+});
+
+// List rows one by one with no pre-drawn slots (rule 4.9): with k of N rows on screen the block stays centred,
+// older rows move apart when the next one arrives. Rows are absolutely positioned at their final places.
+const STEP = 186, N = 3, rows = ["#c-1", "#c-2", "#c-3"], at = [t, t + 1.1, t + 2.0];
+rows.forEach((id, k) => {
+  const y = (N - k - 1) * STEP / 2;
+  if (k === 0) { tl.set(id, { opacity: 1, y }, 0); return; }          // the first row is there on the cut
+  tl.set(id, { opacity: 0, y: y + 60 }, 0);
+  tl.to(id, { opacity: 1, y, duration: 0.22, ease: "back.out(1.6)" }, at[k]);
+  rows.slice(0, k).forEach(prev => tl.to(prev, { y, duration: 0.25, ease: "power2.out" }, at[k]));
+});
 ```
 
 Состояние-переключатель (тумблер, кнопка «Подписаться» → «Вы подписаны»): два слоя
@@ -264,47 +345,97 @@ tl.to("#doc", { y: -360, duration: 0.4, ease: "power2.inOut" }, t + 0.9);
 ### 2.5. Сцены: заготовки
 
 Каждая заготовка – внутренность `.scene-split` (полоса y 140–750) или `.scene-visual`
-(полоса y 130–1280). Размеры шрифтов не меньше правила 5.2.
+(полоса y 130–1280), классы – из скелета 2.3. Размеры смыслового текста не меньше правила
+5.2; хром и фактура – правило 13.2, 13.4. В каждой: фон с фактурой (класс сцены), карточка с
+рамкой и тенью, хром своего типа, акцент на кромке (`.edge`), микродвижение при удержании
+(раздел 2.4), будущие строки до своего слова скрыты, а не нарисованы пустыми.
 
 ```html
-<!-- Terminal (split): 3-5 lines of 44 px mono, key line 56 px. Every future line stands from the first frame
-     as a muted "$" prompt in the same place (slot, rule 4.4); tl.set hides it when the command is typed. -->
-<div class="card card-dark" style="left:120px; top:140px; width:840px; height:580px">
-  <div style="font:500 32px 'Ui'; color:var(--muted-on-dark)">терминал</div>
-  <div class="mono" id="t-l1" style="margin-top:28px">$ команда один</div>
-  <div class="mono" id="t-l2" style="opacity:0">$ команда два</div>
-  <div class="mono" id="t-l3" style="opacity:0; font-size:56px; color:var(--accent-on-dark)">готово</div>
+<!-- Terminal (split, rule 13.2): mono caps label + divider, lines "marker + verb + path", key command,
+     texture output 18 px, status line at the bottom, final status pill on the edge.
+     On the cut two real commands are already there (rule 4.3); nothing stands for a line before it is typed. -->
+<div class="card card-dark" style="left:120px; top:140px; width:840px; height:602px; font-family:'Mono', monospace">
+  <div style="height:64px; display:flex; align-items:center; border-bottom:2px solid #262C35;
+       font:500 28px 'Mono'; letter-spacing:.06em; color:var(--muted-on-dark)">TERMINAL · ~/project</div>
+  <div class="mono" style="margin-top:20px"><span style="color:var(--accent-on-dark)">›</span> read <b>README.md</b></div>
+  <div style="font:400 18px/28px 'Mono'; opacity:.45">  # project · setup · usage</div>   <!-- texture: not read -->
+  <div class="mono" style="margin-top:12px"><span style="color:var(--accent-on-dark)">›</span> edit <b>config.yaml</b></div>
+  <div class="mono" id="t-key" style="margin-top:12px; font-size:48px"><span style="color:var(--accent-on-dark)">$</span> tool run --check</div>
+  <div id="t-out" style="font:400 18px/28px 'Mono'; opacity:.45">  ok  README.md<br>  ok  config.yaml</div>
+  <div style="position:absolute; left:32px; right:32px; bottom:24px; height:56px; display:flex; align-items:center; gap:16px;
+       border-top:2px solid #262C35; font:500 32px 'Ui'; color:var(--muted-on-dark)">
+    <svg id="t-spin" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#66D9E8" stroke-width="3"><path d="M12 3a9 9 0 1 0 9 9"/></svg>
+    <span>работает</span><span id="t-time" style="margin-left:auto; font-family:'Mono'">0:04</span>
+  </div>
+  <div class="pill edge" id="t-done">ГОТОВО</div>
 </div>
 
-<!-- Checklist (visual): main card + second element (progress) under it.
-     A VISUAL card starts at x 60, so its side padding is 60 px: text starts at x 120 (rule 1.7). -->
-<div class="card" style="left:60px; top:130px; width:960px; height:760px; padding: 32px 60px">
-  <h3>ПОСЛЕ ВСТРЕЧИ</h3>
-  <div class="row" id="c-1"><span class="box" id="c-1-box"></span>Первый пункт</div>
-  <div class="row" id="c-2" style="opacity:0"><span class="box" id="c-2-box"></span>Второй пункт</div>
-  <div class="row" id="c-3" style="opacity:0"><span class="box" id="c-3-box"></span>Третий пункт</div>
+<!-- Checklist (visual): header with icon, rows "icon + bold name + state", progress panel with a number under it.
+     A VISUAL card starts at x 60, so rows start at 56 px inside: text from x 120 (rule 1.7).
+     Rows are placed at their final tops; the GSAP block "rows one by one" (2.4) keeps them centred while fewer
+     than three are on screen - no empty slots for the future rows (rule 4.9). -->
+<div class="card" style="left:60px; top:130px; width:960px; height:760px; padding:0 56px 32px">
+  <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg></span>ПОСЛЕ ВСТРЕЧИ</div>
+  <div class="row" id="c-1" style="top:140px; left:56px; right:56px; height:160px">
+    <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>README.md</b>
+    <span class="state box" id="c-1-box"></span>
+  </div>
+  <div class="row" id="c-2" style="top:326px; left:56px; right:56px; height:160px">
+    <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>config.yaml</b>
+    <span class="state box" id="c-2-box"></span>
+  </div>
+  <div class="row" id="c-3" style="top:512px; left:56px; right:56px; height:160px">
+    <span class="ico"><svg viewBox="0 0 24 24"><path d="M8 5l10 7-10 7z"/></svg></span><b>tool run</b>
+    <span class="state box" id="c-3-box"></span>
+  </div>
 </div>
-<div class="card" style="left:60px; top:950px; width:880px; height:300px; padding: 32px 60px">
-  <div style="font:600 40px 'Ui'">готово <span id="done-n">0</span> из 3</div>
+<div class="card" style="left:60px; top:950px; width:880px; height:300px; padding:32px 60px">
+  <div style="font:700 48px 'Ui'">готово <span id="done-n">0</span> из 3</div>
   <div style="margin-top:40px; height:56px; border-radius:28px; background:#EEF1F4; overflow:hidden">
     <div id="bar" style="height:100%; width:100%; background:var(--accent); transform-origin:left center"></div>
   </div>
+  <div class="pill edge" id="steps">3 ШАГА</div>
 </div>
 
-<!-- Comment field with the code word (split, call to action, rule 10.2) -->
+<!-- Comment field with the code word (split, call to action, rules 10.2, 10.7).
+     Before the code word: preview of this reel (hook title + like/comment icons), avatar, button.
+     The field appears together with its first letter (pop 0.2 s): no empty field, no hint text (rule 4.9). -->
 <div class="card" style="left:120px; top:140px; width:840px; height:602px">
-  <h3>Комментарий</h3>
-  <div style="display:flex; align-items:center; gap:24px; margin-top:36px">
+  <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>Комментарий</div>
+  <div style="display:flex; align-items:center; gap:20px; margin-top:24px; font:400 32px 'Ui'">
+    <b>ТРИ ФАЙЛА</b>
+    <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#111" stroke-width="2.5" style="margin-left:auto"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 5.5-7 10-7 10z"/></svg>
+    <svg id="ico-comment" viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="#111" stroke-width="2.5"><path d="M4 5h16v11H9l-5 4z"/></svg>
+  </div>
+  <div style="display:flex; align-items:center; gap:24px; margin-top:28px">
     <div style="width:72px; height:72px; border-radius:50%; background:var(--accent)"></div>
-    <div id="field" style="flex:1; height:150px; border:4px solid var(--ink); border-radius:16px; display:flex;
-         align-items:center; padding:0 24px; font:700 110px 'Display'; letter-spacing:.04em; color:var(--accent)">
+    <div id="field" style="flex:1; height:150px; border:4px solid var(--ink); border-radius:16px; display:flex; opacity:0;
+         align-items:center; padding:0 24px; font:700 110px 'Display'; letter-spacing:.04em; color:var(--accent); background:#FFFFFF">
       <span class="ch" style="opacity:0">С</span><span class="ch" style="opacity:0">Л</span><span class="ch" style="opacity:0">О</span>
-      <span class="ch" style="opacity:0">В</span><span class="ch" style="opacity:0">О</span>
+      <span class="ch" style="opacity:0">В</span><span class="ch" style="opacity:0">О</span><span class="caret" id="field-caret"></span>
     </div>
   </div>
-  <div id="send" style="margin:40px 0 0 auto; width:340px; height:96px; border-radius:48px; background:var(--accent);
-       color:#fff; font:600 40px 'Ui'; display:flex; align-items:center; justify-content:center">Отправить</div>
+  <div id="send" style="margin:36px 0 0 auto; width:340px; height:96px; border-radius:48px; background:var(--accent);
+       color:#fff; font:700 40px 'Ui'; display:flex; align-items:center; justify-content:center">Отправить</div>
+  <div class="pill edge" id="cta-pill">КОДОВОЕ СЛОВО</div>
 </div>
+```
+
+```js
+// Terminal: the key line and its output arrive on their words, the spinner turns, "ГОТОВО" lands on the edge.
+// The timer ticks like the counter in 2.4 (stacked values switched with tl.set).
+tl.set(["#t-key", "#t-out", "#t-done"], { opacity: 0 }, 0);
+tl.set("#t-key", { opacity: 1 }, t1);                       // then type it: one <span> per char at 40-70 chars/s
+tl.to("#t-out", { opacity: .45, duration: 0.2 }, t1 + 0.6);
+tl.to("#t-spin", { rotation: 720, duration: 2, ease: "none" }, t0);
+tl.set("#t-done", { opacity: 0, scale: 0.7, rotation: -4 }, 0);
+tl.to("#t-done", { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2)" }, t2);
+
+// Comment: the comment icon lights up on the word "comments"; the field pops in with the first letter.
+tl.to("#ico-comment", { scale: 1.15, duration: 0.15, yoyo: true, repeat: 1 }, tWord);
+tl.set("#field", { opacity: 1, scale: 0.9 }, tCode);
+tl.to("#field", { scale: 1, duration: 0.2, ease: "back.out(2)" }, tCode);
+document.querySelectorAll("#field .ch").forEach((ch, k) => tl.set(ch, { opacity: 1 }, tCode + k / 12));
 ```
 
 ### 2.6. Рендер и проверка файла
@@ -338,6 +469,24 @@ python3 $S/verify.py reel.mp4                        # duration, size, fps, loud
 # plan 1: 0.0-3.0 s of reel-cut.mp4, y0 = 550
 cat > split-01.graph <<'EOF'
 [0:v]trim=start=0:end=3,setpts=PTS-STARTPTS,crop=1080:960:0:550,setsar=1[spk];
+[1:v]scale=1080:960,setsar=1,fps=30[vis];
+[vis][spk]vstack=inputs=2,format=yuv420p[v]
+EOF
+ffmpeg -y -i reel-cut.mp4 -i scene-01.mp4 -filter_complex_script split-01.graph \
+  -map "[v]" -an -r 30 -c:v libx264 -crf 18 plan-01.mp4
+```
+
+Крупный план, который `head_guide.py` уменьшил (правило 1.3, шаг 5): голова не режется,
+спикер в масштабе `s` стоит по центру, боковые поля – тот же кадр, размытый и затемнённый.
+Перед сборкой проверь срез: `head_guide.py --top … --chin … --y0 530 --scale 0.9` – без FAIL.
+
+```bash
+# plan 1, close-up at s = 0.9 (972 x 1728, centred at x 54), y0 = 530 in the scaled rows
+cat > split-01.graph <<'EOF'
+[0:v]trim=start=0:end=3,setpts=PTS-STARTPTS,split=2[a][b];
+[a]crop=1080:960:0:589,gblur=sigma=30,colorchannelmixer=rr=0.6:gg=0.6:bb=0.6[fill];
+[b]scale=972:1728,crop=972:960:0:530[head];
+[fill][head]overlay=54:0,setsar=1[spk];
 [1:v]scale=1080:960,setsar=1,fps=30[vis];
 [vis][spk]vstack=inputs=2,format=yuv420p[v]
 EOF
@@ -399,8 +548,10 @@ hyperframes render build -o probe.mp4 -q draft --start 0 --end 6
 python3 $S/frames_sheet.py probe.mp4 --out probe-accept --tail 1
 ```
 
-Посмотри лист: шов, место субтитра, лицо, поля. Потом полный рендер и приёмка
-(`montage-acceptance.md`).
+Посмотри лист: шов, место субтитра, лицо, поля; кадр 0,00 – заголовок-хук уже читается,
+вставка рядом заполнена (правило 3.7); голова целиком – верх волос не выше y 980, подбородок
+не ниже y 1880 (правило 1.3); ни одной заготовки (правило 4.9); у каждой вставки слои, хром и
+движение при удержании (раздел 13). Потом полный рендер и приёмка (`montage-acceptance.md`).
 
 Дешевле пробного рендера – снимки отдельных моментов без кодирования видео:
 
@@ -411,4 +562,4 @@ hyperframes snapshot build --at 0,2.9,6.6,9.1,37.35 --no-end -o probe-shots
 Кадры в любых точках шкалы (стыки, клики, смены состояний) и общий лист `contact-sheet.jpg`.
 Видео спикера на снимках тоже есть. Удобно до первого рендера пройти по одному моменту на
 каждую сцену и по каждому клику курсора: так ловятся значки на тексте, курсор на надписи,
-пустые карточки.
+пустые карточки и заготовки.
