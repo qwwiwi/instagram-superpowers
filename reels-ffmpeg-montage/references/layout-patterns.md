@@ -276,14 +276,15 @@ tl.to("#doc", { y: -360, duration: 0.4, ease: "power2.inOut" }, t + 0.9);
   <div class="mono" id="t-l3" style="opacity:0; font-size:56px; color:var(--accent-on-dark)">готово</div>
 </div>
 
-<!-- Checklist (visual): main card + second element (progress) under it -->
-<div class="card" style="left:60px; top:130px; width:960px; height:760px">
+<!-- Checklist (visual): main card + second element (progress) under it.
+     A VISUAL card starts at x 60, so its side padding is 60 px: text starts at x 120 (rule 1.7). -->
+<div class="card" style="left:60px; top:130px; width:960px; height:760px; padding: 32px 60px">
   <h3>ПОСЛЕ ВСТРЕЧИ</h3>
   <div class="row" id="c-1"><span class="box" id="c-1-box"></span>Первый пункт</div>
   <div class="row" id="c-2" style="opacity:0"><span class="box" id="c-2-box"></span>Второй пункт</div>
   <div class="row" id="c-3" style="opacity:0"><span class="box" id="c-3-box"></span>Третий пункт</div>
 </div>
-<div class="card" style="left:60px; top:950px; width:880px; height:300px">
+<div class="card" style="left:60px; top:950px; width:880px; height:300px; padding: 32px 60px">
   <div style="font:600 40px 'Ui'">готово <span id="done-n">0</span> из 3</div>
   <div style="margin-top:40px; height:56px; border-radius:28px; background:#EEF1F4; overflow:hidden">
     <div id="bar" style="height:100%; width:100%; background:var(--accent); transform-origin:left center"></div>
