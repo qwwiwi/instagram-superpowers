@@ -170,8 +170,18 @@ def group_sheets(times: list[float], duration: float, head: float, tail: float, 
 # --- extraction ----------------------------------------------------------------------------------------
 
 
+# ffmpeg's expression parser gives up on a long sum of eq() terms (about 110 on ffmpeg 8: "Cannot
+# allocate memory"), so frame numbers are selected in batches.
+SELECT_BATCH = 60
+
+
 def _select(indexes: list[int]) -> str:
     return "select='" + "+".join(f"eq(n,{i})" for i in indexes) + "'"
+
+
+def batches(indexes: list[int], size: int = SELECT_BATCH) -> list[list[int]]:
+    """Sorted frame numbers cut into runs of at most ``size`` (one ffmpeg pass each)."""
+    return [indexes[k:k + size] for k in range(0, len(indexes), size)]
 
 
 def frame_indexes(times: list[float], fps: float, last_index: int) -> list[int]:
@@ -180,15 +190,17 @@ def frame_indexes(times: list[float], fps: float, last_index: int) -> list[int]:
 
 
 def export_frames(video: Path, times: list[float], fps: float, last_index: int, out_dir: Path) -> list[Path]:
-    """Write one full size JPEG per time in a single ffmpeg pass."""
+    """Write one full size JPEG per time (one ffmpeg pass per batch of frame numbers)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     indexes = frame_indexes(times, fps, last_index)
     unique = sorted(set(indexes))
     with tempfile.TemporaryDirectory(prefix="frames-", dir=out_dir) as tmp:
-        pattern = Path(tmp) / "f-%05d.jpg"
-        run_ffmpeg(["-y", "-i", str(video), "-vf", _select(unique), "-fps_mode", "passthrough",
-                    "-q:v", "2", str(pattern)], "frame export")
-        produced = sorted(Path(tmp).glob("f-*.jpg"))
+        produced: list[Path] = []
+        for number, batch in enumerate(batches(unique)):
+            pattern = Path(tmp) / f"b{number:03d}-%05d.jpg"
+            run_ffmpeg(["-y", "-i", str(video), "-vf", _select(batch), "-fps_mode", "passthrough",
+                        "-q:v", "2", str(pattern)], "frame export")
+            produced += sorted(Path(tmp).glob(f"b{number:03d}-*.jpg"))
         if len(produced) != len(unique):
             raise MontageError(f"expected {len(unique)} frames, ffmpeg wrote {len(produced)}")
         by_index = dict(zip(unique, produced))
@@ -204,14 +216,16 @@ def gray_frames(video: Path, indexes: list[int]) -> list[bytes]:
     """Small gray frames (1/10 size) at the given frame numbers, in the order given."""
     unique = sorted(set(indexes))
     require_tool("ffmpeg")
-    cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-i", str(video), "-vf",
-           f"{_select(unique)},scale={FRAME_W // SMALL}:{FRAME_H // SMALL},format=gray",
-           "-fps_mode", "passthrough", "-f", "rawvideo", "-"]
-    done = subprocess.run(cmd, capture_output=True, check=False)
-    if done.returncode != 0:
-        raise MontageError(f"gray frame export failed: {done.stderr.decode(errors='replace')[-500:]}")
+    data = b""
+    for batch in batches(unique):
+        cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-i", str(video), "-vf",
+               f"{_select(batch)},scale={FRAME_W // SMALL}:{FRAME_H // SMALL},format=gray",
+               "-fps_mode", "passthrough", "-f", "rawvideo", "-"]
+        done = subprocess.run(cmd, capture_output=True, check=False)
+        if done.returncode != 0:
+            raise MontageError(f"gray frame export failed: {done.stderr.decode(errors='replace')[-500:]}")
+        data += done.stdout
     size = (FRAME_W // SMALL) * (FRAME_H // SMALL)
-    data = done.stdout
     if len(data) != size * len(unique):
         raise MontageError(f"expected {len(unique)} gray frames, got {len(data) / size:.1f}")
     by_index = {index: data[i * size:(i + 1) * size] for i, index in enumerate(unique)}

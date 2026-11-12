@@ -157,6 +157,22 @@ def test_audio_longer_than_the_picture_does_not_ask_for_missing_frames(tmp_path:
 
 
 @NEED_FFMPEG
+def test_a_long_reel_exports_every_frame_and_change(tmp_path: Path) -> None:
+    # A 45 s reel asks for ~130 frames: one select expression with that many terms fails in ffmpeg.
+    clip = tmp_path / "clip.mp4"
+    make_moving_clip(clip, 30.0)
+    out = tmp_path / "accept"
+    code = frames_sheet.main([str(clip), "--out", str(out), "--step", "0.2", "--fine", "0.1", "--head", "1",
+                              "--tail", "1", "--region", "split=120,140,840,610"])
+    assert code == 0
+    frames = list((out / "frames").glob("*.jpg"))
+    assert len(frames) > 150
+    rows = (out / "changes.tsv").read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 150  # header + 149 pairs on the 0.2 s grid
+    assert [len(b) for b in frames_sheet.batches(list(range(130)))] == [60, 60, 10]
+
+
+@NEED_FFMPEG
 def test_sheets_without_pillow_and_drawtext_fall_back_to_the_printed_index(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     clip = tmp_path / "clip.mp4"
