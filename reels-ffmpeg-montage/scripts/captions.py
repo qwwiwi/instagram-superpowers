@@ -2,13 +2,15 @@
 """Burned-in captions from words-cut.json, two backends.
 
 Usage:
-    captions.py reel-cut.mp4 words-cut.json [--backend auto|ass|png] [--out reel-captioned.mp4]
+    captions.py reel-cut.mp4 words-cut.json [--backend auto|ass|png] [--y 0.76] [--out reel-captioned.mp4]
 
-Layout: 2-4 words per line, the current word highlighted, a large bold font.
-The line sits in the lower-middle part of a 1080x1920 frame: its bottom edge is at
-y=1250, above the zone the Instagram interface covers at the bottom, and it is kept
-inside side margins that stay clear of the buttons on the right. No line is wider
-than ``MAX_LINE_WIDTH`` pixels (a lone word that is wider is shrunk).
+Layout: 2-4 words per line, the current word highlighted, a large bold font with a thick
+outline and a soft shadow. The line sits in the lower third of the frame: the centre of its
+block is at ``CAPTION_CENTER_Y`` (0.76) of the frame height, below the face of a normally framed
+talking head and above the zone the Instagram interface covers at the bottom; ``--y`` moves it.
+It is kept inside side margins that stay clear of the buttons on the right. No line is wider
+than ``MAX_LINE_WIDTH`` pixels (a lone word that is wider is shrunk). Sizes are given for a
+1080-pixel-wide frame and scale with the real width of the video.
 
 Backends (``--backend``):
   * ``ass`` - an ASS file burned in by ffmpeg's libass (``ass`` filter). The font is a
@@ -34,16 +36,27 @@ from common import OUT_HEIGHT, OUT_WIDTH, MontageError, Word, load_words, requir
 
 LOG = logging.getLogger("reels.captions")
 
+# All sizes below are pixels of the 1080x1920 reference frame; the png backend scales them by frame width / 1080.
 FONT_SIZE = 78
-OUTLINE = 7
-# Bottom edge of the caption block, pixels from the top (the interface covers about 1520 and below).
-SAFE_BOTTOM_Y = 1250
+OUTLINE = 9
+SHADOW_OFFSET = 4  # px down; the png backend blurs the shadow, libass draws it hard at 50 % opacity
+SHADOW_BLUR = 6  # px, png backend only
+# Vertical position of the caption block: its centre as a fraction of the frame height. 0.76 puts the block in the
+# lower third, below the face of a normally framed talking head, and its bottom edge (with the outline and the shadow)
+# stays above 0.82, clear of the Instagram buttons and the caption field. Both backends read this one constant;
+# ``--y`` overrides it.
+CAPTION_CENTER_Y = 0.76
+MIN_CENTER_Y, MAX_CENTER_Y = 0.30, 0.90
 SIDE_MARGIN = 120
 MAX_LINE_WIDTH = OUT_WIDTH - 2 * SIDE_MARGIN
 MAX_WORDS = 4
 # A pause between words longer than this ends a line. It is a little under the gap that
 # plan_cut.py leaves at a trimmed pause (0.25 s), so a cut pause also breaks the line.
 GAP_BREAK = 0.22
+# A lone word of at most this many letters is put in front of the next line when the pause after it is at most
+# LONE_JOIN_GAP seconds (a pause cut by plan_cut.py leaves about 0.3 s between the words).
+LONE_WORD_LETTERS = 4
+LONE_JOIN_GAP = 0.45
 # A caption stays on screen this long after its last word, if no other caption follows.
 HOLD_AFTER = 0.15
 MIN_EVENT = 0.03
@@ -61,6 +74,23 @@ LIBASS_HELP = (
 
 _NARROW = set("il.,:;!|' ")
 _WIDE = set("мшщюжыфМШЩЮЖЫФWM@")
+
+
+def check_center_y(value: float) -> float:
+    """Validate ``--y``.
+
+    Raises:
+        MontageError: Not a fraction of the frame height between ``MIN_CENTER_Y`` and ``MAX_CENTER_Y``.
+    """
+    if not MIN_CENTER_Y <= value <= MAX_CENTER_Y:
+        raise MontageError(f"--y is the centre of the caption as a fraction of the frame height, "
+                           f"{MIN_CENTER_Y:g}-{MAX_CENTER_Y:g} (default {CAPTION_CENTER_Y:g}); got {value:g}")
+    return value
+
+
+def box_bottom_y(center_y: float = CAPTION_CENTER_Y, size: float = FONT_SIZE, height: int = OUT_HEIGHT) -> int:
+    """Pixel row of the bottom edge of the text box for a caption centred at ``center_y`` (fraction of ``height``)."""
+    return round(center_y * height + size / 2)
 
 
 def has_libass() -> bool:
@@ -149,7 +179,9 @@ def group_lines(words: list[Word], max_words: int = MAX_WORDS, max_width: float 
 
     A line ends at ``max_words`` words, when the next word would make it wider than
     ``max_width``, at a pause longer than ``gap_break``, or after sentence-ending
-    punctuation. A line of one word is joined to the previous line when that fits.
+    punctuation. A line of one word is joined to the previous line when that fits; a
+    short lone word that cannot is put in front of the next line when the pause after it
+    is at most ``LONE_JOIN_GAP``.
 
     Args:
         words: Words on the output clock.
@@ -182,7 +214,28 @@ def group_lines(words: list[Word], max_words: int = MAX_WORDS, max_width: float 
             merged[-1].append(line[0])
         else:
             merged.append(line)
-    return [Line(words=line) for line in merged]
+    # A short lone word (a one-letter «Я», «И») that cannot join the previous line goes in front of the next one when the
+    # gap after it is small, instead of standing alone on screen for a few frames.
+    joined: list[list[Word]] = []
+    index = 0
+    while index < len(merged):
+        line = merged[index]
+        following = merged[index + 1] if index + 1 < len(merged) else None
+        if (following is not None and len(line) == 1 and len(clean_letters(line[0].text)) <= LONE_WORD_LETTERS
+                and not line[0].text.endswith((".", "?", "!", "…"))
+                and following[0].start - line[0].end <= LONE_JOIN_GAP and len(following) < max_words
+                and estimate_width(" ".join(w.text for w in [line[0], *following]), size) <= max_width):
+            joined.append([line[0], *following])
+            index += 2
+            continue
+        joined.append(line)
+        index += 1
+    return [Line(words=line) for line in joined]
+
+
+def clean_letters(text: str) -> str:
+    """The letters and digits of a word, without punctuation."""
+    return "".join(ch for ch in text if ch.isalnum())
 
 
 def ass_time(seconds: float) -> str:
@@ -263,15 +316,20 @@ def build_events(lines: list[Line], size: float = FONT_SIZE, max_width: float = 
     return events
 
 
-def build_ass(words: list[Word], font: str = FALLBACK_FONT, size: float = FONT_SIZE) -> str:
+def build_ass(words: list[Word], font: str = FALLBACK_FONT, size: float = FONT_SIZE,
+              center_y: float = CAPTION_CENTER_Y) -> str:
     """The whole ASS document for a list of words.
+
+    The script is written for a 1080x1920 frame; libass scales it to the real frame size
+    (``ScaledBorderAndShadow``), so a smaller video gets proportionally smaller captions.
 
     Args:
         words: Words on the output clock (``words-cut.json``).
         font: Font family name.
         size: Font size, pixels.
+        center_y: Centre of the caption as a fraction of the frame height.
     """
-    margin_v = OUT_HEIGHT - SAFE_BOTTOM_Y
+    margin_v = OUT_HEIGHT - box_bottom_y(center_y, size)
     header = (
         "[Script Info]\n"
         "ScriptType: v4.00+\n"
@@ -283,7 +341,7 @@ def build_ass(words: list[Word], font: str = FALLBACK_FONT, size: float = FONT_S
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
         "Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, "
         "MarginV, Encoding\n"
-        f"Style: Default,{font},{int(size)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{OUTLINE},0,2,"
+        f"Style: Default,{font},{int(size)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{OUTLINE},{SHADOW_OFFSET},2,"
         f"{SIDE_MARGIN},{SIDE_MARGIN},{margin_v},1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -293,12 +351,35 @@ def build_ass(words: list[Word], font: str = FALLBACK_FONT, size: float = FONT_S
     return header + body
 
 
-def escape_filter_value(path: str) -> str:
-    """Escape a path for use inside an ffmpeg filter argument (``\\``, ``'``, ``:``, ``,``, ``[``, ``]``)."""
-    out = path.replace("\\", "\\\\")
-    for ch in ("'", ":", ",", "[", "]", ";"):
+def escape_option_value(text: str) -> str:
+    """First escaping level of ffmpeg (the AVOption parser of one filter): ``\\``, ``'`` and the ``:`` that separates options."""
+    out = text.replace("\\", "\\\\")
+    for ch in ("'", ":"):
         out = out.replace(ch, "\\" + ch)
     return out
+
+
+def escape_filtergraph(text: str) -> str:
+    """Second escaping level of ffmpeg (the filtergraph parser): ``\\``, ``'``, ``[``, ``]``, ``=``, ``,``, ``;`` and the
+    leading or trailing blanks it would strip."""
+    out = text.replace("\\", "\\\\")
+    for ch in ("'", "[", "]", "=", ",", ";"):
+        out = out.replace(ch, "\\" + ch)
+    if out[:1] == " ":
+        out = "\\" + out
+    if out[-1:] == " " and out[-2:-1] != "\\":
+        out = out[:-1] + "\\ "
+    return out
+
+
+def escape_filter_value(path: str) -> str:
+    """Escape a path for use as a filter option inside ``-vf`` / ``-filter_complex``.
+
+    ffmpeg parses a filter description at two levels (see the «Notes on filtergraph escaping» chapter of its
+    documentation): the filtergraph parser first, then the option parser of the filter. A value is therefore
+    escaped for the option level first and the result is escaped again for the filtergraph level.
+    """
+    return escape_filtergraph(escape_option_value(path))
 
 
 def burn_command(video: Path, ass: Path, out: Path, fonts_dir: Path | None = None) -> list[str]:
@@ -322,7 +403,9 @@ def burn(video: Path, ass: Path, out: Path, fonts_dir: Path | None = None) -> No
     if not has_libass():
         raise MontageError(LIBASS_HELP)
     require_tool("ffmpeg")
-    command = burn_command(video, ass.resolve(), out.resolve(), fonts_dir.resolve() if fonts_dir else None)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Every path is made absolute BEFORE the working directory changes to the folder of the ASS file.
+    command = burn_command(video.resolve(), ass.resolve(), out.resolve(), fonts_dir.resolve() if fonts_dir else None)
     done = subprocess.run(["ffmpeg", "-hide_banner", "-nostdin", *command], capture_output=True, text=True, check=False,
                           cwd=ass.resolve().parent)
     if done.returncode != 0:
@@ -355,6 +438,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fonts-dir", type=Path, help="ass backend: folder with extra font files for libass")
     parser.add_argument("--png-dir", type=Path, help="png backend: keep the caption pictures in this folder")
     parser.add_argument("--size", type=int, default=FONT_SIZE, help=f"font size in pixels (default {FONT_SIZE})")
+    parser.add_argument("--y", type=float, default=CAPTION_CENTER_Y, dest="center_y",
+                        help=f"centre of the caption as a fraction of the frame height, {MIN_CENTER_Y:g}-{MAX_CENTER_Y:g} "
+                             f"(default {CAPTION_CENTER_Y:g}); raise it to move the caption down, lower it to move it up")
     parser.add_argument("--ass-only", action="store_true", help="write the ASS file and stop, do not burn")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
@@ -365,6 +451,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(args.verbose)
     try:
+        check_center_y(args.center_y)
         wf = load_words(args.words)
         if not wf.words:
             raise MontageError("words-cut.json holds no words; nothing to caption")
@@ -379,12 +466,12 @@ def main(argv: list[str] | None = None) -> int:
         if backend == "png":
             from captions_png import burn_png  # noqa: PLC0415 - Pillow is optional, loaded only for this backend
 
-            count = burn_png(args.video, wf.words, args.out, args.font, args.size, args.png_dir)
+            count = burn_png(args.video, wf.words, args.out, args.font, args.size, args.png_dir, args.center_y)
             print(f"burned in ({count} caption pictures, png backend) -> {args.out}")
             return 0
         font = pick_font(args.font, installed_cyrillic_families())
         args.ass.parent.mkdir(parents=True, exist_ok=True)
-        args.ass.write_text(build_ass(wf.words, font, args.size), encoding="utf-8")
+        args.ass.write_text(build_ass(wf.words, font, args.size, args.center_y), encoding="utf-8")
         print(f"captions: font {font}, size {args.size} -> {args.ass}")
         if args.ass_only:
             return 0
