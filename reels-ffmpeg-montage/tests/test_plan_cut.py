@@ -5,17 +5,20 @@ from __future__ import annotations
 import pytest
 
 from audio import Span, envelope_from_pcm, percentile_threshold, quiet_spans
-from common import Word
+from common import Word, fit_words_to_edges
 from phrases import build_phrases
 from plan_cut import (
+    DEFAULT_HEAD_AIR,
     PlanError,
     check_keep_covers_speech,
+    edge_air,
     find_candidates,
     keep_from_removals,
     make_plan,
     parse_drop_list,
     plan_drop_removals,
     plan_pause_removals,
+    speech_edges,
     validate_keep,
     Removal,
 )
@@ -114,8 +117,8 @@ def test_confirmed_drops_remove_the_phrases_and_keep_air() -> None:
     drops = [r for r in plan["removals"] if r["kind"] == "drop"]
     assert len(drops) == 2
     first, second = drops
-    # P1 starts the take: cut from 0 to 0.2 s before P2 (3.6 s)
-    assert first["start"] == 0.0 and first["end"] == pytest.approx(3.4)
+    # P1 starts the take: cut from 0 to the head air before P2 (3.6 s)
+    assert first["start"] == 0.0 and first["end"] == pytest.approx(3.6 - edge_air(DEFAULT_HEAD_AIR, 1.0), abs=1e-3)
     # P3 (6.7-7.85) sits between P2 (ends 5.95) and P4 (starts 8.5): 0.125 s of air stays on each side
     assert second["start"] == pytest.approx(5.95 + 0.125)
     assert second["end"] == pytest.approx(8.5 - 0.125)
@@ -164,12 +167,15 @@ def test_parse_drop_list() -> None:
 # --- speed, validity, totals --------------------------------------------------------------------------------------
 
 
-def test_speed_changes_only_the_output_length() -> None:
+def test_speed_changes_only_the_output_length_and_the_edge_air() -> None:
     words = fake_words()
     base = make_plan(words, CLIP_DURATION, items_of(words), drop=[1, 3])
     fast = make_plan(words, CLIP_DURATION, items_of(words), drop=[1, 3], speed=1.25)
-    assert fast["keep"] == base["keep"]
-    assert fast["stats"]["output_seconds"] == pytest.approx(base["stats"]["kept_seconds"] / 1.25)
+    # Inside the reel nothing moves; the edge air is set in output seconds, so the source air grows with the speed.
+    inner = lambda plan: [plan["keep"][0]["end"]] + [k for k in plan["keep"][1:-1]] + [plan["keep"][-1]["start"]]  # noqa: E731
+    assert inner(fast) == inner(base)
+    assert fast["keep"][0]["start"] <= base["keep"][0]["start"] and fast["keep"][-1]["end"] >= base["keep"][-1]["end"]
+    assert fast["stats"]["output_seconds"] == pytest.approx(fast["stats"]["kept_seconds"] / 1.25)
     assert fast["speed"] == 1.25
 
 
@@ -259,3 +265,52 @@ def test_quiet_spans_found_in_pcm() -> None:
 def test_empty_envelope_is_an_error() -> None:
     with pytest.raises(ValueError):
         percentile_threshold([])
+
+
+# --- speech edges: the reel starts on the first sound and ends right after the last word -------------------------
+
+
+def test_head_cut_follows_the_sound_when_the_stamp_is_early() -> None:
+    # The recogniser stamps the first word from 0.20 s, but the take is quiet until 0.65 s (hand reaching for the camera).
+    words = [Word("ноль", 0.20, 0.65), Word("месяцев", 0.70, 1.10), Word("назад", 1.15, 1.50)]
+    quiet = [Span(0.0, 0.65), Span(1.55, 3.0)]
+    removals, _ = plan_pause_removals(words, 3.0, quiet=quiet)
+    head = next(r for r in removals if r.kind == "head")
+    tail = next(r for r in removals if r.kind == "tail")
+    assert head.start == 0.0 and 0.65 - head.end <= 0.10 + 1e-9
+    assert tail.start - 1.55 <= 0.10 + 1e-9 and tail.end == 3.0
+
+
+def test_head_cut_removes_a_noise_before_the_first_word() -> None:
+    # A click at 0.0-0.1 s, then quiet: everything before the voice goes, not only the quiet piece.
+    words = [Word("раз", 0.8, 1.2)]
+    removals, _ = plan_pause_removals(words, 2.0, quiet=[Span(0.1, 0.8), Span(1.25, 2.0)])
+    head = next(r for r in removals if r.kind == "head")
+    assert head.start == 0.0 and head.end == pytest.approx(0.8 - DEFAULT_HEAD_AIR)
+
+
+def test_speech_edges_trust_the_words_without_energy() -> None:
+    words = [Word("раз", 0.3, 0.6), Word("два", 0.9, 1.2)]
+    assert speech_edges(words, None) == (0.3, 1.2)
+    # the sound never moves an edge past the neighbouring word
+    assert speech_edges(words, [Span(0.0, 2.0)]) == (0.9, 0.9)
+
+
+def test_make_plan_moves_the_edge_words_onto_the_sound() -> None:
+    words = [Word("ноль", 0.20, 0.65), Word("месяцев", 0.70, 1.10), Word("назад", 1.15, 1.50)]
+    quiet = [Span(0.0, 0.65), Span(1.55, 3.0)]
+    plan = make_plan(words, 3.0, items_of(words), [], quiet=quiet)
+    assert plan["speech_edges"] == {"onset": 0.65, "offset": 1.55}
+    first = plan["keep"][0]
+    assert 0.65 - first["start"] <= 0.10 + 1e-9
+    assert plan["keep"][-1]["end"] - 1.55 <= 0.10 + 1e-9
+
+
+def test_fit_words_to_edges_moves_a_word_stamped_before_the_voice() -> None:
+    words = [Word("ноль", 0.10, 0.40), Word("месяцев", 0.90, 1.30), Word("назад", 1.40, 2.20)]
+    fitted = fit_words_to_edges(words, onset=0.55, offset=1.80)
+    assert (fitted[0].start, fitted[0].end) == (0.55, pytest.approx(0.85))  # kept its 0.30 s, before the next word
+    assert (fitted[-1].start, fitted[-1].end) == (1.40, 1.80)
+    assert (words[0].start, words[-1].end) == (0.10, 2.20)  # the input is not changed
+    late = fit_words_to_edges([Word("раз", 0.2, 0.5), Word("два", 2.0, 2.4)], onset=0.2, offset=1.0)
+    assert (late[-1].start, late[-1].end) == (pytest.approx(0.6), 1.0)  # kept its 0.4 s, back from the offset

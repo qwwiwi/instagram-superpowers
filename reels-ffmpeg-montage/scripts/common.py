@@ -349,6 +349,43 @@ def remap_words(words: Sequence[Word], segments: Sequence[MapSegment], speed: fl
     return out
 
 
+def fit_words_to_edges(words: Sequence[Word], onset: float, offset: float) -> list[Word]:
+    """Move the edge words onto the real start and end of the voice.
+
+    A first word stamped before ``onset`` starts at ``onset``; when its whole stamp lay before the
+    onset, it keeps its length (up to the next word). The last word is treated the same way at ``offset``.
+    Words in between are not touched.
+
+    Args:
+        words: Words in time order.
+        onset: First sound of speech, seconds.
+        offset: Last sound of speech, seconds.
+
+    Returns:
+        New word objects; the input is not changed.
+    """
+    out = [Word(w.text, w.start, w.end) for w in words]
+    if not out:
+        return out
+    first = out[0]
+    if first.start < onset:
+        length = first.end - first.start
+        limit = out[1].start if len(out) > 1 else max(offset, onset + length)
+        if first.end <= onset:
+            # the whole stamp lay before the voice: keep the word's length, up to the next word
+            first.end = max(min(onset + length, limit), onset)
+        first.start = onset
+    last = out[-1]
+    if last.end > offset:
+        length = last.end - last.start
+        floor = out[-2].end if len(out) > 1 else last.start
+        last.end = max(offset, floor)
+        if last.start >= last.end:
+            # the whole stamp lay after the voice: keep the word's length, back from the offset
+            last.start = max(last.end - length, floor)
+    return out
+
+
 def quantize_keep(keep: Sequence[tuple[float, float]], fps: float = OUT_FPS) -> list[tuple[float, float]]:
     """Snap kept pieces outward to the frame grid so video and audio pieces have the same length.
 
