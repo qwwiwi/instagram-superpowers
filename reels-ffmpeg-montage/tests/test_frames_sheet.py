@@ -285,7 +285,7 @@ def test_guide_rows_mark_every_100_px() -> None:
 def test_guide_filter_draws_lines_and_labels_only_with_drawtext() -> None:
     rows = head_guide.guide_rows(20)
     plain = head_guide.ffmpeg_guide_filter(rows, drawtext=False)
-    assert "drawtext" not in plain and "y=959" in plain and plain.count("drawbox") == len(rows) + 1  # 960 and 1520 are drawn as zone lines, 115 is extra
+    assert "drawtext" not in plain and "y=959" in plain and plain.count("drawbox") == len(rows)  # 140, 960 and 1520 lie on the grid and are drawn as zone lines
     assert "drawtext=text='1500'" in head_guide.ffmpeg_guide_filter(rows, drawtext=True)
 
 

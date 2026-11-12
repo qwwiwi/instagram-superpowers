@@ -7,7 +7,7 @@ Usage:
     head_guide.py --top 625 --chin 1560 --y0 880            # check a crop: exit 1 when it cuts the head
 
 The frame is drawn at full size (1080 x 1920) with a thin line every 20 px, a thicker labelled line
-every 100 px and the zone lines of the regulation (y 115, 960, 1520). Read on it the top of the
+every 100 px and the zone lines of the regulation (y 140, 960, 1520). Read on it the top of the
 hair, the eye line and the chin, then pass them as ``--top``, ``--eyes``, ``--chin``: the script
 prints the split offset ``y0`` (rule 1.3 of ``montage-reglament.md``) with where the head lands in
 the split, and where the caption of a full-screen speaker shot goes (rule 7.5). The whole head stays
@@ -34,7 +34,7 @@ LOG = logging.getLogger("reels.head_guide")
 FRAME_W = 1080
 FRAME_H = 1920
 SEAM = 960
-ZONE_ROWS = (115, 960, 1520)
+ZONE_ROWS = (140, 960, 1520)
 # Split framing (rule 1.3): hair top 60 px under the seam, or 40 px when the chin would fall below 1480.
 HAIR_GAP = 60
 HAIR_GAP_TIGHT = 40
@@ -54,7 +54,7 @@ CHIN_PAD = 14
 HAIR_PAD = 24
 LINE_H = 80
 PLATE_GAP = 12  # plates of two caption lines on the speaker do not touch (rule 7.4)
-TOP_SAFE = 115
+TOP_SAFE = 140
 
 
 @dataclass

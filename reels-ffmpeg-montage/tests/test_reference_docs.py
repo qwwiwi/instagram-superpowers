@@ -94,7 +94,7 @@ def test_reglament_no_longer_allows_empty_slots_or_placeholders() -> None:
 def test_acceptance_has_a_placeholder_fail_row_and_a_frame_zero_check() -> None:
     text = _read("montage-acceptance.md")
     assert re.search(r"^\| 4\.9 \| заготовки \|.*заготовка на экране = провал", text, flags=re.M)
-    assert re.search(r"^\| 3\.7 \| кадр 0,00: заголовок-хук \|.*≥ 72 px.*≤ 0,10 с", text, flags=re.M)
+    assert re.search(r"^\| 3\.7 \| кадр 0,00: заголовок-хук \|.*≥ 72 px.*≤ 0,30 с", text, flags=re.M)
     assert "слоты будущих пунктов – содержимое" not in text
 
 
@@ -222,3 +222,85 @@ def test_every_acceptance_fail_class_has_a_rule_and_a_checklist_row() -> None:
         assert re.search(rf"^\| 14\.{n} \|", acceptance, flags=re.M), f"no checklist row 14.{n}"
         assert re.search(rf"^\| 14\.{n} ", acceptance.split("## 6.", 1)[1], flags=re.M), f"no table row 14.{n}"
     assert "frame_check.py frames" in acceptance and "frame_check.py text" in acceptance
+
+
+# --- review 3: one number, one boundary, one rule in every document ------------------------------------------------
+
+
+def _all_docs() -> dict[str, str]:
+    docs = {p.name: p.read_text(encoding="utf-8") for p in REFERENCES.glob("*.md")}
+    docs["SKILL.md"] = SKILL.read_text(encoding="utf-8")
+    return docs
+
+
+def test_one_top_boundary_y_140_in_documents_and_scripts() -> None:
+    import frame_check
+    import frames_sheet
+    import head_guide
+
+    for name, text in _all_docs().items():
+        assert not re.search(r"y 115|0–115|115–", text), f"old top boundary y 115 in {name}"
+    assert frame_check.TOP_ZONE == frames_sheet.GUIDE_ROWS[0] == head_guide.ZONE_ROWS[0] == head_guide.TOP_SAFE == 140
+
+
+def test_edge_air_is_one_number_with_one_comparison() -> None:
+    import plan_cut
+    import verify
+
+    assert plan_cut.EDGE_LIMIT == verify.DEFAULT_MAX_LEAD == verify.DEFAULT_MAX_TRAIL == 0.30
+    rule = _read("montage-reglament.md").split("**3.7.", 1)[1].split("**4.", 1)[0]
+    assert "не больше 0,30 с" in rule and "воздух ≤ 0,30 с" in rule
+    for name, text in _all_docs().items():
+        assert "0,10 с" not in text, f"old edge limit 0,10 s in {name}"
+        assert "шума комнаты" not in text or name == "montage-rules.md", f"noise-floor edge threshold in {name}"
+
+
+def test_acceptance_splits_visual_review_and_technical_check() -> None:
+    text = _read("montage-acceptance.md")
+    roles = text.split("**Кто принимает", 1)[1].split("## 1.", 1)[0]
+    visual = next(line for line in roles.splitlines() if line.startswith("| Визуальная приёмка"))
+    technical = next(line for line in roles.splitlines() if line.startswith("| Техническая проверка"))
+    assert "транскрипт" in visual and "раскадровки" in visual and "нет" in visual
+    assert "verify.py" in technical and "frame_check.py" in technical and "раскадровка" in technical
+
+
+def test_no_script_compares_screen_numbers_or_names_with_the_speech() -> None:
+    for name, text in _all_docs().items():
+        assert "frame_check.py text build/index.html --words " not in text, name
+    acceptance = _read("montage-acceptance.md")
+    assert re.search(r"^\| 14\.9 \| числа \| приёмщик", acceptance, flags=re.M)
+    assert re.search(r"^\| 14\.10 \| содержимое из речи \| приёмщик", acceptance, flags=re.M)
+
+
+def test_one_rule_on_content_sources() -> None:
+    reglament = _read("montage-reglament.md")
+    assert "Единое правило источников" in reglament
+    for phrase in ("или нейтральные (`ls`, `cd`)", "настоящие команды, пути и метки того инструмента",
+                   "настоящую метку инструмента", "из речи или из настоящего инструмента"):
+        assert phrase not in reglament, phrase
+
+
+def test_band_threshold_and_light_share_are_stated_the_same_way() -> None:
+    reglament, acceptance = _read("montage-reglament.md"), _read("montage-acceptance.md")
+    for text in (reglament, acceptance):
+        assert "≤ 250 px" not in text and "> 250 px" not in text and "выше 250 px" not in text
+    assert "по времени визуала" not in reglament and "время визуала" not in acceptance
+    assert "кадров ролика" not in acceptance
+    assert "длительность всего ролика" in reglament.split("**14.6.", 1)[1].split("**14.7.", 1)[0]
+
+
+def test_single_borrowing_policy_rule_refs_and_publication_wording() -> None:
+    reglament = _read("montage-reglament.md")
+    assert "«уикенд»" not in reglament and "одна политика" in reglament
+    assert "**14.3. Строка субтитра – не больше 3 слов** (правило 7.1)" in reglament
+    skill = SKILL.read_text(encoding="utf-8")
+    assert "нет ни одного действия, которое публикует" not in skill
+    assert "нет API публикации" in skill and "интерфейс приложения" in skill
+
+
+def test_hook_skeleton_shows_the_stated_number_on_frame_zero() -> None:
+    patterns = _read("layout-patterns.md")
+    script = patterns.split("### 2.3.", 1)[1].split("### 2.4.", 1)[0]
+    assert script.count('class="row" id="sc1-row') == 3
+    assert not re.search(r'tl\.set\("#sc1-row\d", \{ opacity: 0', script), "a hook row is hidden on frame 0"
+    assert "(0.85-1.0)" not in patterns  # scale range comment matches rule 1.3 (0.55-1.0)

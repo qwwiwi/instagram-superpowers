@@ -3,7 +3,8 @@
 Готовые раскладки, чтобы геометрию не придумывать заново. Все числа – из
 `montage-reglament.md` (кадр 1080 × 1920, 30 к/с). Тексты в примерах условные (общий
 инструмент командной строки, файлы `README.md`, `config.yaml`): в ролике на экране только
-слова речи студента и настоящие метки инструмента, о котором речь (правила 4.2, 13.3).
+слова речи студента и нейтральный хром интерфейса – кнопки окна, знак приглашения, курсор,
+значки, служебные надписи; команды и имена файлов – только сказанные (единое правило 4.2).
 
 Каждая сцена в скелетах уже детализирована по разделу 13 регламента: фон с фактурой,
 карточка с рамкой и жёсткой тенью, хром своего типа, строки «значок + жирное название +
@@ -31,13 +32,13 @@
 | Субтитр в СПЛИТЕ | низ блока y 944, строка 80 px (1 строка: y 864–944; 2 строки: y 784–944) |
 | Макет ВИЗУАЛА | x 60–1020, y 140–1280 |
 | Субтитр в ВИЗУАЛЕ | верх блока y 1320, строка 80 px, низ ≤ 1480 |
-| «Два визуала» | верх y 115–820, разделитель y 836–840, низ y 860–1280 |
+| «Два визуала» | верх y 140–820, разделитель y 836–840, низ y 860–1280 |
 | Субтитр СПИКЕРА «грудь» | верх блока y 1180, низ ≤ 1352 (строки плашек с шагом 92 px) |
 | Субтитр СПИКЕРА «над головой» | низ блока = верх волос − 24 (самый высокий верх волос за план); 2 строки плашек – 172 px |
 | Срез спикера в СПЛИТЕ | строки исходника `[y0, y0 + 960]`, `y0` и масштаб по правилу 1.3 (`head_guide.py --top … --chin …`); голова целиком: верх волос y ≥ 1000, рот и подбородок y ≤ 1520; проверка среза – `head_guide.py --top … --chin … --y0 … [--scale …]` (код 1 – FAIL) |
 | Спикер уменьшен (крупный план) | масштаб `s` 0,55–1,0: видео `1080·s × 1920·s`, по центру (`left = 540·(1 − s)`), `top = −y0`; боковые поля – копия того же кадра, размытие ≥ 30 px, яркость −30…−50 % |
-| Заголовок-хук на кадре 0,00 | ≥ 72 px, 2–6 слов, строка над карточкой y 140–330 (1–2 строки); виден и непрозрачен с кадра 0 (правило 3.7) |
-| Не трогать | y 0–115, y 1520–1920, x 950–1080 при y 1080–1720 |
+| Заголовок-хук на кадре 0,00 | ≥ 72 px, 2–6 слов, строка над карточкой y 140–330 (1–2 строки); виден и непрозрачен с кадра 0 (правило 3.7); карточка под ним – не ближе 20 px к низу заголовка (одна строка – с y 260, две – с y 350) |
+| Не трогать | y 0–140 (верхняя служебная зона, одна граница везде), y 1520–1920, x 950–1080 при y 1080–1720 |
 
 ## 2. Путь А: композиция HyperFrames
 
@@ -122,8 +123,8 @@ build/
   /* Speaker half of a split: untimed wrapper that crops the take (rule 1.3: the whole head, hair >= y 1000, mouth and chin <= y 1520). */
   .speaker-half { position: absolute; left: 0; top: 960px; width: 1080px; height: 960px; overflow: hidden; z-index: 1; }
   .speaker-half video { position: absolute; left: 0; width: 1080px; height: 1920px; } /* top: -y0 */
-  /* Close-up scaled to s (0.85-1.0): the speaker is 1080*s x 1920*s, centred; the side gaps show a blurred,
-     darkened copy of the same frame (never a flat bar). */
+  /* Close-up scaled to s (0.55-1.0, rule 1.3; below 0.85 tell the student the take is too close): the speaker is
+     1080*s x 1920*s, centred; the side gaps show a blurred, darkened copy of the same frame (never a flat bar). */
   .speaker-half video.spk-fill { filter: blur(30px) brightness(0.6); }
   .speaker-full { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 1; }
 
@@ -213,7 +214,8 @@ build/
   <video id="spk-2" class="clip speaker-full" src="speaker.mp4" muted playsinline
          data-start="3" data-duration="2.5" data-media-start="3"></video>
 
-  <!-- Plan 1: split scene with the hook title. Frame 0.00: title, header and two real rows already on screen. -->
+  <!-- Plan 1: split scene with the hook title. The title says THREE files, so frame 0.00 shows exactly three rows
+       (rule 14.9): the number is on screen from the first frame; the hook motion is state changes, not new rows. -->
   <div id="sc-1" class="clip scene-split bg-dark" data-start="0" data-duration="3">
     <div class="hook-title">ТРИ ФАЙЛА</div>   <!-- one line: y 150-240; two lines end at y 330, then the card starts at y 350 -->
     <div class="card" id="sc1-card" style="left:120px; top:270px; width:840px; height:472px">
@@ -228,10 +230,9 @@ build/
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>config.yaml</b>
         <span class="state" style="color:var(--muted)">правка<span class="caret" id="sc1-caret"></span></span>
       </div>
-      <!-- Third row: not drawn until its word (rule 4.9). -->
       <div class="row" id="sc1-row3" style="top:340px">
         <span class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg></span><b>notes.md</b>
-        <span class="state pill">НОВЫЙ</span>
+        <span class="state pill" id="sc1-st3">НОВЫЙ</span>
       </div>
       <div class="pill edge" id="sc1-badge">3 ФАЙЛА</div>
     </div>
@@ -257,9 +258,10 @@ build/
   word("#w2", 0.62);
   word("#w3", 0.9);
   // Hook title: no tween before frame 0 - it is simply there. An accent may move it only later.
-  // Scene states (rule 2.5): the third row pops in on its word, the badge lands on the card edge.
-  tl.set("#sc1-row3", { opacity: 0, y: 40 }, 0);
-  tl.to("#sc1-row3", { opacity: 1, y: 0, duration: 0.22, ease: "back.out(1.7)" }, 0.5);
+  // Scene states (rule 2.5): all three rows are there on frame 0 (the title says three); the third row's state
+  // pops on its word, the badge lands on the card edge.
+  tl.set("#sc1-st3", { opacity: 0, scale: 0.7 }, 0);
+  tl.to("#sc1-st3", { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2)" }, 0.5);
   tl.set("#sc1-badge", { opacity: 0, scale: 0.7, rotation: -4 }, 0);
   tl.to("#sc1-badge", { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2)" }, 1.2);
   // Micro-motion while held (rule 13.6): caret blinks every 0.5 s, the status pill pulses.
@@ -401,7 +403,10 @@ rows.forEach((id, k) => {
 
 <!-- Comment field with the code word (split, call to action, rules 10.2, 10.7).
      Before the code word: preview of this reel (hook title + like/comment icons), avatar, button.
-     The field appears together with its first letter (pop 0.2 s): no empty field, no hint text (rule 4.9). -->
+     The field appears together with its first letter (pop 0.2 s): no empty field, no hint text (rule 4.9).
+     Geometry inside the split band y 140-750 (measured in a browser): card y 200-742 (+8 px shadow = 750);
+     header 204-288; preview row 312-368; field 396-546; button 582-678. The edge badge is short ("КОД"), so it
+     sits right of the header title and does not touch it (rule 14.4). -->
 <div class="card" style="left:120px; top:200px; width:840px; height:542px">
   <div class="head"><span class="ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>Комментарий</div>
   <div style="display:flex; align-items:center; gap:20px; margin-top:24px; font:400 32px 'Ui'">
@@ -419,7 +424,7 @@ rows.forEach((id, k) => {
   </div>
   <div id="send" style="margin:36px 0 0 auto; width:340px; height:96px; border-radius:48px; background:var(--accent);
        color:#fff; font:700 40px 'Ui'; display:flex; align-items:center; justify-content:center">Отправить</div>
-  <div class="pill edge" id="cta-pill">КОДОВОЕ СЛОВО</div>
+  <div class="pill edge" id="cta-pill">КОД</div>
 </div>
 ```
 
