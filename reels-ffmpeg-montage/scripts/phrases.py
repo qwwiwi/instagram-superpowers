@@ -5,7 +5,10 @@ Usage:
     phrases.py words.json [--out phrases.json] [--table phrases.md]
 
 A phrase is speech between pauses of ``--min-pause`` seconds and longer. A
-phrase shorter than ``--min-phrase`` joins its neighbour. 0.15 s of silence is
+phrase never ends on a preposition, conjunction or particle (``в``, ``и``, ``у``,
+``что`` ...) unless the pause after it is ``--hard-pause`` or longer, or the word
+closes a sentence: a short pause there is a breath inside the sentence, so the
+next piece joins it. A phrase shorter than ``--min-phrase`` joins its neighbour. 0.15 s of silence is
 kept on each side of a phrase, never more than half of the silence. The script
 only gives facts; which phrase is a repeat or an abandoned take is judged by the
 agent and confirmed by the student.
@@ -35,10 +38,34 @@ LOG = logging.getLogger("reels.phrases")
 
 # Pauses of this length and longer separate phrases.
 DEFAULT_MIN_PAUSE = 0.32
+# After a preposition, conjunction or particle only a pause this long (or longer) is a break.
+DEFAULT_HARD_PAUSE = 1.5
 # A phrase shorter than this joins a neighbour.
 DEFAULT_MIN_PHRASE = 0.6
 # Silence kept around a phrase, never more than half of the silence.
 DEFAULT_PAD = 0.15
+
+
+# Words a phrase must not end on (lower case, ё written as е). Russian first, English for English takes.
+FUNCTION_WORDS = frozenset(
+    "в во на с со к ко по о об обо от ото до из изо за у для при без безо над под про через между перед около среди ради "
+    "и а но или либо да что чтобы как если когда пока хотя будто потому ли бы же не ни "
+    "a an the of to in on at by for with from and or but if as that".split()
+)
+_EDGE_CHARS = " \t,;:«»\"'()[]—–-"
+_SENTENCE_END = (".", "!", "?", "…")
+
+
+def ends_on_function_word(text: str) -> bool:
+    """True when a word is a preposition, conjunction or particle that does not close a sentence.
+
+    Args:
+        text: The word as recognised, with its punctuation.
+    """
+    stripped = text.strip().rstrip("»\"')]").lower().replace("ё", "е")
+    if stripped.endswith(_SENTENCE_END):
+        return False
+    return stripped.strip(_EDGE_CHARS) in FUNCTION_WORDS
 
 
 @dataclass
@@ -95,6 +122,7 @@ def build_phrases(
     min_pause: float = DEFAULT_MIN_PAUSE,
     min_phrase: float = DEFAULT_MIN_PHRASE,
     pad: float = DEFAULT_PAD,
+    hard_pause: float = DEFAULT_HARD_PAUSE,
 ) -> list[Phrase]:
     """Group words into phrases.
 
@@ -104,6 +132,8 @@ def build_phrases(
         min_phrase: A phrase whose speech is shorter than this joins the previous one
             (the first one joins the next one).
         pad: Silence kept on each side of a phrase, seconds.
+        hard_pause: A group that ends on a preposition, conjunction or particle joins
+            the next group unless the pause between them is this long; 0 turns it off.
 
     Returns:
         Phrases numbered from 1, in time order.
@@ -114,6 +144,13 @@ def build_phrases(
             groups[-1].append(word)
         else:
             groups.append([word])
+    index = 0
+    while index + 1 < len(groups):
+        gap = groups[index + 1][0].start - groups[index][-1].end
+        if gap < hard_pause and ends_on_function_word(groups[index][-1].text):
+            groups[index].extend(groups.pop(index + 1))
+        else:
+            index += 1
     index = 0
     while len(groups) > 1 and index < len(groups):
         length = groups[index][-1].end - groups[index][0].start
@@ -188,6 +225,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--table", type=Path, default=Path("phrases.md"), help="readable table (default ./phrases.md)")
     parser.add_argument("--min-pause", type=float, default=DEFAULT_MIN_PAUSE, help=f"pause that separates phrases, s (default {DEFAULT_MIN_PAUSE})")
     parser.add_argument("--min-phrase", type=float, default=DEFAULT_MIN_PHRASE, help=f"shortest phrase, s (default {DEFAULT_MIN_PHRASE})")
+    parser.add_argument("--hard-pause", type=float, default=DEFAULT_HARD_PAUSE,
+                        help=f"after a preposition/conjunction only a pause this long breaks the phrase, s (default {DEFAULT_HARD_PAUSE}; 0 = off)")
     parser.add_argument("--pad", type=float, default=DEFAULT_PAD, help=f"silence kept around a phrase, s (default {DEFAULT_PAD})")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
@@ -204,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             LOG.info("dropped %d empty or invented word(s)", dropped)
         if not words:
             raise MontageError("No words in the file, nothing to build")
-        phrases = build_phrases(words, args.min_pause, args.min_phrase, args.pad)
+        phrases = build_phrases(words, args.min_pause, args.min_phrase, args.pad, args.hard_pause)
         write_json(args.out, phrases_payload(phrases, wf.duration, wf.language, args.min_pause, args.min_phrase))
         table = format_table(phrases)
         args.table.parent.mkdir(parents=True, exist_ok=True)
