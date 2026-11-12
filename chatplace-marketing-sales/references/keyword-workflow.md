@@ -40,20 +40,20 @@ curl -sS -X POST "$API" \
 
 Схема `automations_quick_setup`: триггер задаётся парой `triggerType` + `startMessages`, тексты – полями `welcomeMessage`, `welcomeButton`, `messageWithLink`, `buttonText`, `buttonLink`. Названия полей берите ровно из таблицы ниже.
 
-| Поле | Обязательно | Что это |
+| Поле | Использование в этом рецепте | Что это |
 |---|---|---|
-| `botId` | да | id бота из `bots_list` |
-| `triggerType` | да | `["messageContains","commentContains"]` – ловим и слово в DM, и слово в комментарии |
-| `startMessages` | да | 7+ написаний слова (регистры и алфавиты) |
-| `templateType` | да | `"base"` – оба сообщения создаются сразу в типе `Template`, кнопка со ссылкой работает |
-| `welcomeMessage` | да | первое сообщение (гейт), без ссылки |
-| `welcomeButton` | да | надпись на кнопке гейта |
-| `messageWithLink` | да | второе сообщение – то, что открывается по кнопке гейта |
-| `buttonText` | да | надпись на кнопке со ссылкой |
-| `buttonLink` | да | ссылка кнопки |
-| `additionalMaterialMessage` | нет | отложенное сообщение (например, карточка канала) |
-| `additionalMaterialDelayType` | нет | единица задержки, например `"hour"` |
-| `additionalMaterialDelayValue` | нет | число единиц, например `1` |
+| `botId` | передаём | id бота из `bots_list` |
+| `triggerType` | передаём | `["messageContains","commentContains"]` – ловим и слово в DM, и слово в комментарии |
+| `startMessages` | передаём | минимум 7 написаний слова суммарно (регистры и алфавиты, оба языка вместе) |
+| `templateType` | передаём | `"base"` – оба сообщения создаются сразу в типе `Template`, кнопка со ссылкой работает |
+| `welcomeMessage` | передаём | первое сообщение (гейт), без ссылки |
+| `welcomeButton` | передаём | надпись на кнопке гейта |
+| `messageWithLink` | передаём | второе сообщение – то, что открывается по кнопке гейта |
+| `buttonText` | передаём | надпись на кнопке со ссылкой |
+| `buttonLink` | передаём | ссылка кнопки |
+| `additionalMaterialMessage` | опционально | отложенное сообщение (например, карточка канала) |
+| `additionalMaterialDelayType` | опционально | единица задержки, например `"hour"` |
+| `additionalMaterialDelayValue` | опционально | число единиц, например `1` |
 
 ```bash
 URL="https://yourdomain.com/guide"   # куда ведёт кнопка в оффере
@@ -67,21 +67,18 @@ jq -n --arg b "$BOT" --arg url "$URL" '{
       templateType: "base",
       welcomeMessage: "Лови. Внутри – разбор по воркшопу. Жми «Забрать», пришлю.",
       welcomeButton: "Забрать",
-      messageWithLink: "Держи материал. А следом расскажу, что делать дальше.",
+      messageWithLink: "Держи материал. Если будут вопросы – пиши.",
       buttonText: "Открыть",
-      buttonLink: $url,
-      additionalMaterialMessage: "Пока пробуешь – загляни в мой канал.",
-      additionalMaterialDelayType: "hour",
-      additionalMaterialDelayValue: 1
+      buttonLink: $url
     }
   }
 }' > /tmp/automation.json
 curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Content-Type: application/json' --data-binary @/tmp/automation.json
 ```
 
-Три последних поля (`additionalMaterial*`) можно убрать – тогда отложенного сообщения не будет.
+По умолчанию воронка заканчивается оффером. Если нужен отложенный переход в ваш Telegram-канал, настройте его по [funnel-flow.md](funnel-flow.md), добавив действующую ссылку на канал. Поля `additionalMaterial*` из таблицы выше (отложенное сообщение и его задержка) можно передать в этом же вызове; тогда в funnel-flow.md сообщение и delay-узел только дорабатываются, а не создаются заново.
 
-Запиши `automationId` и `stepId`/`messageId` из ответа. Дальше – вторая кнопка и отложенная карточка: [funnel-flow.md](funnel-flow.md).
+Запиши `automationId` и `stepId`/`messageId` из ответа. Дальше – вторая кнопка и (по желанию) отложенная карточка: [funnel-flow.md](funnel-flow.md).
 
 ### 4. Action setup — теггирование
 
@@ -122,7 +119,7 @@ curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Conten
 2. Проверить: публичный ответ появился + в DM пришло welcome-сообщение с кнопкой
 3. Повторить с `Workshop` и `воркшоп` — все должны ловиться
 4. Нажать «Забрать», затем кнопку «Открыть» — ссылка должна открыться (если не открывается – см. гочу «Template против QuickAnswer» в [SKILL.md](../SKILL.md))
-5. Если собрали отложенную карточку – через заданное время (в примере 1 час) проверить, что она пришла ровно один раз
+5. Если собрали отложенную карточку (по умолчанию её нет) – через заданное время проверить, что она пришла ровно один раз
 6. (ОПЦИОНАЛЬНО) Если ведёте учёт источников подписки: через 1–2 часа проверить в вашей таблице подписчиков, если она есть, что источник записан верно
 
 ### 7. Актуализация
@@ -144,10 +141,10 @@ curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Conten
 - [ ] ОПЦИОНАЛЬНО: invite link создан с `member_limit: 99999`
 - [ ] ОПЦИОНАЛЬНО: пара «ссылка → keyword» записана в вашу таблицу подписчиков, если она есть
 - [ ] Tag создан
-- [ ] Automation создана с `triggerType:["messageContains","commentContains"]` + 7+ case variants в `startMessages`
+- [ ] Automation создана с `triggerType:["messageContains","commentContains"]` + минимум 7 вариантов суммарно в `startMessages`
 - [ ] Tag action навешен на первое сообщение
 - [ ] **Comment auto-reply rule создан** (самое частое упущение!)
-- [ ] Rule с теми же 7+ variants в `startMessages`
+- [ ] Rule с тем же набором вариантов в `startMessages`
 - [ ] 3+ варианта ответов в `answers` для ротации
 - [ ] Без эмодзи и без ссылок в `answers`
 - [ ] Проверено live: и коммент, и DM
@@ -162,7 +159,7 @@ curl -sS -X POST "$API" -H "Authorization: Bearer $CHATPLACE_API_KEY" -H 'Conten
 ### Только один регистр
 **Симптом:** клиент пишет «Workshop» — ничего. «workshop» — работает.
 **Причина:** `type:"equals"` case-sensitive.
-**Решение:** 7 вариантов для каждого языка с первого раза.
+**Решение:** передавайте одинаковый набор вариантов в `startMessages` автоматизации и comment rule: минимум семь вариантов суммарно, включая нужные регистры и оба языка, если слово переводимо.
 
 ### Кнопка не открывает ссылку
 **Симптом:** кнопка нарисована серой пилюлей сбоку, по тапу ничего не открывается.

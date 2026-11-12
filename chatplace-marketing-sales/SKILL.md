@@ -16,7 +16,7 @@ description: "Создание элементов воронки в ChatPlace: �
 ## Что нужно до начала
 
 1. **Аккаунт ChatPlace с подключённым Instagram.** Бот Instagram-аккаунта должен быть создан и подключён в кабинете ChatPlace. Для кодовых слов AI-пакет не нужен. Какой тариф ChatPlace требуется для доступа к API, проверьте на сайте ChatPlace: в этом скилле это не зафиксировано.
-2. **API-ключ ChatPlace.** Создаётся в настройках кабинета ChatPlace, раздел API/MCP. Точный путь по меню может отличаться в вашей версии кабинета – если раздела не видно, найдите в настройках пункт про API или MCP. Ключ сохраните сразу и никому не показывайте.
+2. **API-ключ ChatPlace.** Получите API-ключ по актуальной инструкции ChatPlace. Расположение раздела выдачи ключей в кабинете этим скиллом не подтверждено. Ключ сохраните сразу и никому не показывайте.
 3. **Файл с ключами** `~/.secrets/chatplace/env`:
 
    ```bash
@@ -50,8 +50,8 @@ description: "Создание элементов воронки в ChatPlace: �
 ### Правило 1: кодовое слово = 4 элемента за один проход
 1. **Automation** (`automations_quick_setup`) — DM-воронка: welcome + URL-кнопка
 2. **Comment auto-reply rule** (`comments_create`) — публичный ответ под комментом
-3. **Case variants** — минимум 7 форм: ALL_CAPS, Capitalized, lowercase, CamelCase + кириллица. Правило автоответа с `type: "equals"` чувствительно к регистру, поэтому те же варианты нужны и в нём.
-4. **Оба языка** (если переводимо): EN + RU. Пример: workshop, Workshop, WORKSHOP, WorkShop, воркшоп, Воркшоп, ВОРКШОП.
+3. **Case variants** — минимум 7 вариантов суммарно (не на каждый язык): ALL_CAPS, Capitalized, lowercase, CamelCase + кириллица. Правило автоответа с `type: "equals"` чувствительно к регистру, поэтому тот же набор нужен и в нём.
+4. **Оба языка** (если переводимо): EN + RU входят в те же 7 вариантов. Пример: workshop, Workshop, WORKSHOP, WorkShop, воркшоп, Воркшоп, ВОРКШОП.
 
 Почему сразу 4: без comment rule под постом молчание (теряется соцдоказательство). Без case variants триггер не ловит «Workshop» с большой.
 
@@ -110,9 +110,9 @@ source ~/.secrets/chatplace/env   # $CHATPLACE_API_KEY, $CHATPLACE_BOT_ID
 
 1. **(ОПЦИОНАЛЬНО) Invite link** – нужен, только если воронка ведёт в ваш Telegram-канал: Telegram Bot API `createChatInviteLink`; запись в реестр источников – тоже по желанию. Без канала пропустите шаг.
 2. **Tag** (`tags_create`, name=`kw_<keyword>`) для сегментации.
-3. **Automation** (`automations_quick_setup`): botId, `triggerType:["messageContains","commentContains"]`, `startMessages` = 7+ вариантов, `templateType:"base"`, `welcomeMessage` / `welcomeButton` / `messageWithLink` / `buttonText` / `buttonLink` (+ опционально `additionalMaterialMessage` / `additionalMaterialDelayType` / `additionalMaterialDelayValue`). Что делать дальше – [references/funnel-flow.md](references/funnel-flow.md).
+3. **Automation** (`automations_quick_setup`): botId, `triggerType:["messageContains","commentContains"]`, `startMessages` = минимум 7 вариантов суммарно, `templateType:"base"`, `welcomeMessage` / `welcomeButton` / `messageWithLink` / `buttonText` / `buttonLink` (+ опционально, только если нужен отложенный переход в Telegram-канал: `additionalMaterialMessage` / `additionalMaterialDelayType` / `additionalMaterialDelayValue`). По умолчанию воронка кончается оффером. Что делать дальше – [references/funnel-flow.md](references/funnel-flow.md).
 4. **Action** (`automations_actions_setup`) — добавить тег на первое сообщение.
-5. **Comment auto-reply rule** (`comments_create`): type=equals, startMessages=те же 7+, answers=3+ ротации без эмодзи и ссылок.
+5. **Comment auto-reply rule** (`comments_create`): type=equals, startMessages=тот же набор (минимум 7 суммарно), answers=3+ ротации без эмодзи и ссылок.
 6. **Тест** — вручную под постом и в DM.
 
 Существующие keywords можно вести в своём реестре (таблица / spreadsheet) – по желанию; сами автоматизации всегда можно перечитать из ChatPlace tools группы `automations_*`.
