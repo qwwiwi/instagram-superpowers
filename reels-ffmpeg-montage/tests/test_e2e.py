@@ -126,7 +126,8 @@ def test_ass_for_the_cut_words_is_written_without_libass(work: dict[str, Path]) 
 @pytest.mark.skipif(not HAVE_LIBASS, reason="this ffmpeg has no libass (the `ass` filter is missing): captions cannot be burned in")
 def test_captions_are_burned_into_the_video(work: dict[str, Path]) -> None:
     out = work["dir"] / "reel-captioned.mp4"
-    code = captions.main([str(work["video"]), str(work["words_cut"]), "--out", str(out), "--ass", str(work["dir"] / "c.ass")])
+    code = captions.main([str(work["video"]), str(work["words_cut"]), "--backend", "ass", "--out", str(out),
+                          "--ass", str(work["dir"] / "c.ass")])
     assert code == 0
     info = probe(out)
     assert (info.width, info.height) == (1080, 1920)
@@ -138,5 +139,6 @@ def test_burn_without_libass_fails_cleanly(work: dict[str, Path]) -> None:
     if HAVE_LIBASS:
         pytest.skip("this ffmpeg has libass, the failure path cannot be reached")
     out = work["dir"] / "never.mp4"
-    assert captions.main([str(work["video"]), str(work["words_cut"]), "--out", str(out), "--ass", str(work["dir"] / "n.ass")]) == 2
+    assert captions.main([str(work["video"]), str(work["words_cut"]), "--backend", "ass", "--out", str(out),
+                          "--ass", str(work["dir"] / "n.ass")]) == 2
     assert not out.exists()
