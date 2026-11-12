@@ -1,6 +1,6 @@
 # Instagram Superpowers
 
-<p align="center"><img src="assets/banner-hero.jpg" alt="Instagram Superpowers – три скилла для ИИ-агента: идеи, воронка, монтаж рилсов" width="100%"></p>
+<p align="center"><img src="assets/banner-hero.jpg" alt="Instagram Superpowers – четыре скилла для ИИ-агента: идеи, воронка, монтаж рилсов, публикация" width="100%"></p>
 
 Четыре Claude Code скилла для Instagram-воронки: **Loore** – аналитика профилей и рилсов, идеи для контента; **ChatPlace** – кодовые слова и автоворонка (DM + публичный ответ под комментом); **монтаж рилса** с говорящей головой на ffmpeg и Groq, без Edits; **публикация** готового рилса через Edits на macOS – по вашему слову для этого файла.
 
@@ -75,6 +75,7 @@ git clone https://github.com/qwwiwi/instagram-superpowers.git
 cp -r instagram-superpowers/instagram-loore ~/.claude/skills/
 cp -r instagram-superpowers/chatplace-marketing-sales ~/.claude/skills/
 cp -r instagram-superpowers/reels-ffmpeg-montage ~/.claude/skills/
+cp -r instagram-superpowers/reels-edits-publish ~/.claude/skills/
 ```
 
 Перезапустите Claude Code – скиллы появятся в списке доступных.
