@@ -38,7 +38,7 @@ curl -sS -X POST "$API" \
 
 ### 3. Automation через quick_setup
 
-Схема `automations_quick_setup` (актуальная): триггер задаётся парой `triggerType` + `startMessages` (не `commentEquals` / `messageEquals`), тексты – полями `welcomeMessage`, `welcomeButton`, `messageWithLink`, `buttonText`, `buttonLink` (не `welcomeText` / `buttonUrl`).
+Схема `automations_quick_setup`: триггер задаётся парой `triggerType` + `startMessages`, тексты – полями `welcomeMessage`, `welcomeButton`, `messageWithLink`, `buttonText`, `buttonLink`. Названия полей берите ровно из таблицы ниже.
 
 | Поле | Обязательно | Что это |
 |---|---|---|

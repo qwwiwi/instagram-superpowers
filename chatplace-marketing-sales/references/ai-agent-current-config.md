@@ -30,7 +30,7 @@
 
 ## Global rules (ai_agent_update_global_rules, enabled:true)
 
-Полный текст – через `ai_agent_get_global_rules`. Ключевые принципы:
+Полный текст – через `ai_agent_get_global_rules`. Основные положения:
 
 - Роль: AI-ассистент, отвечающий от имени владельца аккаунта @your_instagram.
 - Миссия: продать 3-дневный воркшоп по AI-агентам.

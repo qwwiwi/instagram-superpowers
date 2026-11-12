@@ -216,6 +216,7 @@ curl -s -X POST "https://mcp.chatplace.io/mcp" \
 
 ## Files
 
-- [references/keyword-workflow.md](references/keyword-workflow.md)
-- [references/ai-agent-workflow.md](references/ai-agent-workflow.md)
-- [references/ai-agent-current-config.md](references/ai-agent-current-config.md)
+- [references/keyword-workflow.md](references/keyword-workflow.md) – пошаговое создание кодового слова
+- [references/funnel-flow.md](references/funnel-flow.md) – воронка после quick_setup: гейт, оффер, отложенная карточка
+- [references/ai-agent-workflow.md](references/ai-agent-workflow.md) – AI-агент (опционально, платный AI-пакет)
+- [references/ai-agent-current-config.md](references/ai-agent-current-config.md) – пример конфигурации AI-агента (опционально)
